@@ -22,12 +22,29 @@ export async function PUT(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { name, description, htmlContent, cssContent } = body as {
+  const { name, description, htmlContent, cssContent, schemaJson } = body as {
     name?: string;
     description?: string;
     htmlContent?: string;
     cssContent?: string;
+    schemaJson?: string | object;
   };
+
+  let formattedSchema: string | undefined = undefined;
+  if (schemaJson !== undefined) {
+    if (typeof schemaJson === "string") {
+      try {
+        formattedSchema = JSON.stringify(JSON.parse(schemaJson), null, 2);
+      } catch {
+        return NextResponse.json(
+          { error: "Invalid JSON format for schemaJson" },
+          { status: 400 }
+        );
+      }
+    } else if (typeof schemaJson === "object") {
+      formattedSchema = JSON.stringify(schemaJson, null, 2);
+    }
+  }
 
   await db
     .update(templates)
@@ -36,6 +53,7 @@ export async function PUT(
       ...(description !== undefined ? { description } : {}),
       ...(htmlContent !== undefined ? { htmlContent } : {}),
       ...(cssContent !== undefined ? { cssContent } : {}),
+      ...(formattedSchema !== undefined ? { schemaJson: formattedSchema } : {}),
     })
     .where(eq(templates.id, id));
 

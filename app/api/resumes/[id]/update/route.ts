@@ -3,16 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "@/lib/db/client";
-import { resumes, resumeVersions } from "@/lib/db/schema";
-import { ResumeSchema } from "@/lib/ai/schemas";
+import { resumes, resumeVersions, templates } from "@/lib/db/schema";
 import { updateResumeJson } from "@/lib/ai/resumeUpdaterAgent";
 
 /**
  * Deploys Agent 2 (JSON Source-of-Truth Updater). Accepts a natural language
- * update, merges it into the current resume JSON via LangChain + Zod
- * structured output, validates the result, persists it as the new
- * `current_json`, and writes a new snapshot to resume_versions.
- * (Architecture document section 6, step 5.)
+ * update, optionally passes the active template's JSON schema, merges it into the
+ * current resume JSON via LangChain structured output, validates the result,
+ * persists it as the new `current_json`, and writes a new snapshot to resume_versions.
  */
 export async function POST(
   req: NextRequest,
@@ -20,9 +18,10 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { userUpdateInput, changeSummary } = body as {
+  const { userUpdateInput, changeSummary, templateId } = body as {
     userUpdateInput?: string;
     changeSummary?: string;
+    templateId?: string;
   };
 
   if (!userUpdateInput || !userUpdateInput.trim()) {
@@ -37,11 +36,36 @@ export async function POST(
     return NextResponse.json({ error: "Resume not found" }, { status: 404 });
   }
 
-  const currentJson = ResumeSchema.parse(JSON.parse(resume.currentJson));
-
-  let updatedJson;
+  let currentJson: Record<string, unknown>;
   try {
-    updatedJson = await updateResumeJson(currentJson, userUpdateInput);
+    currentJson = JSON.parse(resume.currentJson);
+  } catch {
+    currentJson = {};
+  }
+
+  // Check if a template with a custom schema is being used
+  let customSchema: Record<string, unknown> | null = null;
+  const activeTemplateId = templateId || resume.templateId;
+  if (activeTemplateId) {
+    const [template] = await db
+      .select()
+      .from(templates)
+      .where(eq(templates.id, activeTemplateId));
+    if (template && template.schemaJson) {
+      try {
+        const parsed = JSON.parse(template.schemaJson);
+        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+          customSchema = parsed as Record<string, unknown>;
+        }
+      } catch (err) {
+        console.warn("Failed to parse template schemaJson:", err);
+      }
+    }
+  }
+
+  let updatedJson: Record<string, unknown>;
+  try {
+    updatedJson = await updateResumeJson(currentJson, userUpdateInput, customSchema);
   } catch (err) {
     console.error("Agent 2 (resume updater) failed:", err);
     return NextResponse.json(
@@ -49,9 +73,6 @@ export async function POST(
       { status: 502 }
     );
   }
-
-  // Enforce schema compliance before persisting anything.
-  const validated = ResumeSchema.parse(updatedJson);
 
   const now = new Date().toISOString();
 
@@ -66,7 +87,11 @@ export async function POST(
 
   await db
     .update(resumes)
-    .set({ currentJson: JSON.stringify(validated), updatedAt: now })
+    .set({
+      currentJson: JSON.stringify(updatedJson),
+      ...(activeTemplateId ? { templateId: activeTemplateId } : {}),
+      updatedAt: now,
+    })
     .where(eq(resumes.id, id));
 
   await db.insert(resumeVersions).values({
@@ -74,13 +99,13 @@ export async function POST(
     resumeId: id,
     versionNumber: nextVersionNumber,
     changeSummary: changeSummary || userUpdateInput.slice(0, 200),
-    snapshotJson: JSON.stringify(validated),
+    snapshotJson: JSON.stringify(updatedJson),
     createdAt: now,
   });
 
   return NextResponse.json({
     resumeId: id,
     versionNumber: nextVersionNumber,
-    currentJson: validated,
+    currentJson: updatedJson,
   });
 }

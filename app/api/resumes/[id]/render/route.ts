@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { resumes, templates } from "@/lib/db/schema";
-import { ResumeSchema } from "@/lib/ai/schemas";
 import { renderResumeHtml } from "@/lib/render/renderResume";
 import {
   DEFAULT_TEMPLATE_HTML,
@@ -20,28 +19,33 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const templateId = req.nextUrl.searchParams.get("templateId");
+  const urlTemplateId = req.nextUrl.searchParams.get("templateId");
 
   const [resume] = await db.select().from(resumes).where(eq(resumes.id, id));
   if (!resume) {
     return NextResponse.json({ error: "Resume not found" }, { status: 404 });
   }
 
-  const data = ResumeSchema.parse(JSON.parse(resume.currentJson));
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(resume.currentJson);
+  } catch {
+    data = {};
+  }
 
+  const effectiveTemplateId = urlTemplateId || resume.templateId;
   let htmlContent = DEFAULT_TEMPLATE_HTML;
   let cssContent = DEFAULT_TEMPLATE_CSS;
 
-  if (templateId) {
+  if (effectiveTemplateId) {
     const [template] = await db
       .select()
       .from(templates)
-      .where(eq(templates.id, templateId));
-    if (!template) {
-      return NextResponse.json({ error: "Template not found" }, { status: 404 });
+      .where(eq(templates.id, effectiveTemplateId));
+    if (template) {
+      htmlContent = template.htmlContent;
+      cssContent = template.cssContent;
     }
-    htmlContent = template.htmlContent;
-    cssContent = template.cssContent;
   }
 
   const html = renderResumeHtml(htmlContent, cssContent, data);

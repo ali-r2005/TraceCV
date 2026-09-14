@@ -8,6 +8,7 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 export const resumes = sqliteTable("resumes", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
+  templateId: text("template_id"),
   currentJson: text("current_json").notNull(),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -28,7 +29,7 @@ export const resumeVersions = sqliteTable("resume_versions", {
 });
 
 /**
- * 3. Templates — Stores custom HTML/CSS templates for rendering.
+ * 3. Templates — Stores custom HTML/CSS templates and their JSON schemas for rendering.
  */
 export const templates = sqliteTable("templates", {
   id: text("id").primaryKey(),
@@ -36,6 +37,7 @@ export const templates = sqliteTable("templates", {
   description: text("description"),
   htmlContent: text("html_content").notNull(),
   cssContent: text("css_content").notNull(),
+  schemaJson: text("schema_json").notNull(),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

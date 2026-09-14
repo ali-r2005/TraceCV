@@ -1,5 +1,4 @@
 import Handlebars from "handlebars";
-import type { ResumeJson } from "@/lib/ai/schemas";
 
 // Small set of helpers useful in resume templates.
 Handlebars.registerHelper("join", (arr: unknown, sep: string) =>
@@ -23,24 +22,26 @@ function getCompiledTemplate(htmlContent: string) {
 }
 
 /**
- * Injects a validated Resume JSON payload into a Handlebars HTML template,
+ * Injects a Resume JSON payload into a Handlebars HTML template,
  * wrapping the result with the template's own CSS for a self-contained
  * document suitable for live preview or PDF export.
  */
 export function renderResumeHtml(
   htmlContent: string,
   cssContent: string,
-  data: ResumeJson
+  data: Record<string, unknown>
 ): string {
   const template = getCompiledTemplate(htmlContent);
   const body = template(data);
+  const basics = data.basics as { fullName?: string } | undefined;
+  const fullName = basics?.fullName || "Resume";
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>${escapeHtml(data.basics?.fullName ?? "Resume")}</title>
+<title>${escapeHtml(fullName)}</title>
 <style>${cssContent}</style>
 </head>
 <body>

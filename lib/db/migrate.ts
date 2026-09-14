@@ -1,15 +1,16 @@
 /**
- * Bootstraps the SQLite schema directly (no migration folder needed for this
- * project's scope). Safe to call multiple times — uses CREATE TABLE IF NOT EXISTS.
- * Mirrors the DDL in the architecture document section 3.
+ * Bootstraps the SQLite schema directly and seeds example templates.
+ * Safe to call multiple times.
  */
 import { sqlite } from "./client";
+import { seedDefaultTemplates } from "./seed";
 
 export function ensureSchema() {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS resumes (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
+      template_id TEXT,
       current_json TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -31,9 +32,32 @@ export function ensureSchema() {
       description TEXT,
       html_content TEXT NOT NULL,
       css_content TEXT NOT NULL,
+      schema_json TEXT NOT NULL DEFAULT '{}',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Ensure column additions if database existed previously
+  try {
+    const templateColumns = sqlite
+      .prepare("PRAGMA table_info(templates)")
+      .all() as Array<{ name: string }>;
+    if (!templateColumns.some((col) => col.name === "schema_json")) {
+      sqlite.exec("ALTER TABLE templates ADD COLUMN schema_json TEXT NOT NULL DEFAULT '{}'");
+    }
+
+    const resumeColumns = sqlite
+      .prepare("PRAGMA table_info(resumes)")
+      .all() as Array<{ name: string }>;
+    if (!resumeColumns.some((col) => col.name === "template_id")) {
+      sqlite.exec("ALTER TABLE resumes ADD COLUMN template_id TEXT");
+    }
+  } catch (err) {
+    console.error("Migration column check error:", err);
+  }
+
+  // Seed default templates if empty
+  seedDefaultTemplates();
 }
 
 ensureSchema();

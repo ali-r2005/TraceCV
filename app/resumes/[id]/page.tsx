@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 type ResumeRecord = {
   id: string;
   title: string;
+  templateId?: string | null;
   currentJson: string;
   updatedAt: string;
 };
@@ -38,8 +39,14 @@ export default function ResumeDetailPage() {
 
   const loadResume = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}`);
-    if (res.ok) setResume(await res.json());
-  }, [resumeId]);
+    if (res.ok) {
+      const data = await res.json();
+      setResume(data);
+      if (data.templateId && !selectedTemplateId) {
+        setSelectedTemplateId(data.templateId);
+      }
+    }
+  }, [resumeId, selectedTemplateId]);
 
   const loadVersions = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}/versions`);
@@ -62,7 +69,12 @@ export default function ResumeDetailPage() {
       fetch(`/api/templates`).then((r) => (r.ok ? r.json() : [])),
     ]).then(([resumeData, versionsData, templatesData]) => {
       if (ignore) return;
-      if (resumeData) setResume(resumeData);
+      if (resumeData) {
+        setResume(resumeData);
+        if (resumeData.templateId) {
+          setSelectedTemplateId(resumeData.templateId);
+        }
+      }
       setVersions(versionsData);
       setTemplates(templatesData);
       setLoading(false);
@@ -96,7 +108,10 @@ export default function ResumeDetailPage() {
       const res = await fetch(`/api/resumes/${resumeId}/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userUpdateInput: updateInput }),
+        body: JSON.stringify({
+          userUpdateInput: updateInput,
+          templateId: selectedTemplateId || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
@@ -131,7 +146,12 @@ export default function ResumeDetailPage() {
   if (loading) return <p className="text-secondary">Loading…</p>;
   if (!resume) return <p className="text-danger">Resume not found.</p>;
 
-  const json = JSON.parse(resume.currentJson);
+  let json: Record<string, unknown> = {};
+  try {
+    json = JSON.parse(resume.currentJson);
+  } catch {
+    json = {};
+  }
 
   return (
     <div>
@@ -163,8 +183,8 @@ export default function ResumeDetailPage() {
 
       <div className="row g-4">
         <div className="col-lg-7">
-          <div className="card mb-4">
-            <div className="card-header">Live Preview</div>
+          <div className="card mb-4 shadow-sm border-0">
+            <div className="card-header bg-light fw-semibold">Live Preview</div>
             <div className="card-body p-0">
               <iframe
                 title="Resume preview"
@@ -176,8 +196,8 @@ export default function ResumeDetailPage() {
         </div>
 
         <div className="col-lg-5">
-          <div className="card mb-4">
-            <div className="card-header">Update Resume (AI Agent)</div>
+          <div className="card mb-4 shadow-sm border-0">
+            <div className="card-header bg-light fw-semibold">Update Resume (AI Agent)</div>
             <div className="card-body">
               <form onSubmit={handleUpdate}>
                 <textarea
@@ -188,32 +208,33 @@ export default function ResumeDetailPage() {
                   onChange={(e) => setUpdateInput(e.target.value)}
                 />
                 {error && (
-                  <div className="alert alert-danger py-2">{error}</div>
+                  <div className="alert alert-danger py-2 small">{error}</div>
                 )}
-                <button className="btn btn-primary" disabled={updating}>
-                  {updating ? "Updating…" : "Submit Update"}
+                <button className="btn btn-primary w-100" disabled={updating}>
+                  {updating ? "Updating…" : "Submit Update with AI"}
                 </button>
               </form>
             </div>
           </div>
 
-          <div className="card mb-4">
-            <div className="card-header">Version History</div>
-            <ul className="list-group list-group-flush">
+          <div className="card mb-4 shadow-sm border-0">
+            <div className="card-header bg-light fw-semibold">Version History</div>
+            <ul className="list-group list-group-flush" style={{ maxHeight: "250px", overflowY: "auto" }}>
               {versions.map((v) => (
                 <li
                   key={v.id}
                   className="list-group-item d-flex justify-content-between align-items-start"
                 >
                   <div>
-                    <div className="fw-semibold">v{v.versionNumber}</div>
+                    <div className="fw-semibold small">v{v.versionNumber}</div>
                     <div className="small text-secondary">{v.changeSummary}</div>
-                    <div className="small text-secondary">
+                    <div className="small text-muted" style={{ fontSize: "0.75rem" }}>
                       {new Date(v.createdAt).toLocaleString()}
                     </div>
                   </div>
                   <button
-                    className="btn btn-sm btn-outline-secondary"
+                    className="btn btn-xs btn-outline-secondary py-0 px-2"
+                    style={{ fontSize: "0.75rem" }}
                     onClick={() => handleRollback(v.id)}
                   >
                     Restore
@@ -223,10 +244,10 @@ export default function ResumeDetailPage() {
             </ul>
           </div>
 
-          <div className="card">
-            <div className="card-header">Source of Truth JSON</div>
+          <div className="card shadow-sm border-0">
+            <div className="card-header bg-light fw-semibold">Source of Truth JSON</div>
             <div className="card-body">
-              <pre className="small mb-0" style={{ maxHeight: 300, overflow: "auto" }}>
+              <pre className="small mb-0 font-monospace" style={{ maxHeight: 250, overflow: "auto" }}>
                 {JSON.stringify(json, null, 2)}
               </pre>
             </div>
