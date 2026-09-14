@@ -25,12 +25,15 @@ Architecture Document.md`.
    npm install
    ```
 
-2. Copy the env example and add your OpenAI key (required for the two AI
-   agents — template generation and resume updates):
+2. Copy the env example and add an AI provider key (required for the two AI
+   agents — template generation and resume updates). Either OpenAI or Google
+   Gemini works:
 
    ```bash
    cp .env.local.example .env.local
-   # then edit .env.local and set OPENAI_API_KEY
+   # then edit .env.local and set OPENAI_API_KEY (default provider), or
+   # set AI_PROVIDER=gemini and GOOGLE_API_KEY (get a key from
+   # https://aistudio.google.com/app/apikey)
    ```
 
 3. Run the dev server:
@@ -75,6 +78,7 @@ lib/
   db/schema.ts        Drizzle schema (resumes, resume_versions, templates)
   db/client.ts         SQLite connection (better-sqlite3 + Drizzle)
   db/migrate.ts        Bootstraps tables (CREATE TABLE IF NOT EXISTS)
+  ai/chatModel.ts      Picks OpenAI or Gemini based on AI_PROVIDER
   ai/schemas.ts        Zod schema for the Resume JSON Source of Truth
   ai/templateAgent.ts        Agent 1: HTML Resume Template Generator
   ai/resumeUpdaterAgent.ts   Agent 2: JSON Source-of-Truth Updater
@@ -105,9 +109,10 @@ lib/
 
 ## Notes
 
-- Both AI agents call OpenAI's `gpt-4o` model through LangChain's
+- Both AI agents call a chat model (OpenAI's `gpt-4o` by default, or
+  Google's `gemini-2.5-flash` when `AI_PROVIDER=gemini`) through LangChain's
   `withStructuredOutput`, which enforces the Zod schemas end-to-end rather
-  than relying on best-effort text parsing.
-- If `OPENAI_API_KEY` is not set, every non-AI feature (create/list/render
+  than relying on best-effort text parsing. See `lib/ai/chatModel.ts`.
+- If no provider key is set, every non-AI feature (create/list/render
   resumes, manage templates, versioning, PDF export) still works; the two
   AI routes return a `502` with a descriptive error instead of crashing.

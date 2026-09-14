@@ -1,4 +1,4 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { getChatModel } from "./chatModel";
 import { ResumeSchema, type ResumeJson } from "./schemas";
 
 /**
@@ -12,7 +12,7 @@ export async function updateResumeJson(
   currentJson: ResumeJson,
   userUpdateInput: string
 ): Promise<ResumeJson> {
-  const llm = new ChatOpenAI({ modelName: "gpt-4o", temperature: 0 });
+  const llm = getChatModel(0);
   const structuredLlm = llm.withStructuredOutput(ResumeSchema);
 
   const systemPrompt = `

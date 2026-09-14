@@ -1,4 +1,4 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { getChatModel } from "./chatModel";
 import { TemplateSchema, type GeneratedTemplate } from "./schemas";
 
 /**
@@ -14,7 +14,7 @@ import { TemplateSchema, type GeneratedTemplate } from "./schemas";
 export async function generateResumeTemplate(
   userDesignPrompt: string
 ): Promise<GeneratedTemplate> {
-  const model = new ChatOpenAI({ modelName: "gpt-4o", temperature: 0.2 });
+  const model = getChatModel(0.2);
   const structuredModel = model.withStructuredOutput(TemplateSchema);
 
   const systemPrompt = `
