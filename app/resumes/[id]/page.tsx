@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 
 type ResumeRecord = {
   id: string;
@@ -30,7 +31,6 @@ export default function ResumeDetailPage() {
   const [resume, setResume] = useState<ResumeRecord | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [previewHtml, setPreviewHtml] = useState("");
   const [updateInput, setUpdateInput] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -42,11 +42,8 @@ export default function ResumeDetailPage() {
     if (res.ok) {
       const data = await res.json();
       setResume(data);
-      if (data.templateId && !selectedTemplateId) {
-        setSelectedTemplateId(data.templateId);
-      }
     }
-  }, [resumeId, selectedTemplateId]);
+  }, [resumeId]);
 
   const loadVersions = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}/versions`);
@@ -54,12 +51,9 @@ export default function ResumeDetailPage() {
   }, [resumeId]);
 
   const loadPreview = useCallback(async () => {
-    const url = selectedTemplateId
-      ? `/api/resumes/${resumeId}/render?templateId=${selectedTemplateId}`
-      : `/api/resumes/${resumeId}/render`;
-    const res = await fetch(url);
+    const res = await fetch(`/api/resumes/${resumeId}/render`);
     if (res.ok) setPreviewHtml(await res.text());
-  }, [resumeId, selectedTemplateId]);
+  }, [resumeId]);
 
   useEffect(() => {
     let ignore = false;
@@ -67,37 +61,19 @@ export default function ResumeDetailPage() {
       fetch(`/api/resumes/${resumeId}`).then((r) => (r.ok ? r.json() : null)),
       fetch(`/api/resumes/${resumeId}/versions`).then((r) => (r.ok ? r.json() : [])),
       fetch(`/api/templates`).then((r) => (r.ok ? r.json() : [])),
-    ]).then(([resumeData, versionsData, templatesData]) => {
+      fetch(`/api/resumes/${resumeId}/render`).then((r) => (r.ok ? r.text() : "")),
+    ]).then(([resumeData, versionsData, templatesData, previewData]) => {
       if (ignore) return;
-      if (resumeData) {
-        setResume(resumeData);
-        if (resumeData.templateId) {
-          setSelectedTemplateId(resumeData.templateId);
-        }
-      }
+      if (resumeData) setResume(resumeData);
       setVersions(versionsData);
       setTemplates(templatesData);
+      setPreviewHtml(previewData);
       setLoading(false);
     });
     return () => {
       ignore = true;
     };
   }, [resumeId]);
-
-  useEffect(() => {
-    let ignore = false;
-    const url = selectedTemplateId
-      ? `/api/resumes/${resumeId}/render?templateId=${selectedTemplateId}`
-      : `/api/resumes/${resumeId}/render`;
-    fetch(url)
-      .then((res) => (res.ok ? res.text() : ""))
-      .then((html) => {
-        if (!ignore) setPreviewHtml(html);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [resumeId, selectedTemplateId]);
 
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
@@ -110,7 +86,7 @@ export default function ResumeDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userUpdateInput: updateInput,
-          templateId: selectedTemplateId || undefined,
+          templateId: resume?.templateId || undefined,
         }),
       });
       const data = await res.json();
@@ -137,10 +113,13 @@ export default function ResumeDetailPage() {
   }
 
   function handleExport() {
-    const url = selectedTemplateId
-      ? `/api/resumes/${resumeId}/export?templateId=${selectedTemplateId}`
-      : `/api/resumes/${resumeId}/export`;
-    window.open(url, "_blank");
+    window.open(`/api/resumes/${resumeId}/export`, "_blank");
+  }
+
+  function getTemplateName(templateId?: string | null) {
+    if (!templateId) return "Default Template";
+    const found = templates.find((t) => t.id === templateId);
+    return found ? found.name : "Custom Template";
   }
 
   if (loading) return <p className="text-secondary">Loading…</p>;
@@ -157,25 +136,21 @@ export default function ResumeDetailPage() {
     <div>
       <div className="d-flex justify-content-between align-items-start mb-4">
         <div>
-          <h1 className="h3 mb-1">{resume.title}</h1>
+          <div className="d-flex align-items-center gap-2 mb-1">
+            <h1 className="h3 mb-0">{resume.title}</h1>
+            <span className="badge bg-secondary">
+              Template: {getTemplateName(resume.templateId)}
+            </span>
+          </div>
           <small className="text-secondary">
-            Last updated {new Date(resume.updatedAt).toLocaleString()}
+            Last updated {new Date(resume.updatedAt).toLocaleString()} &middot;{" "}
+            <Link href="/resumes" className="text-decoration-none">
+              &larr; Back to Resumes
+            </Link>
           </small>
         </div>
         <div className="d-flex gap-2">
-          <select
-            className="form-select"
-            value={selectedTemplateId}
-            onChange={(e) => setSelectedTemplateId(e.target.value)}
-          >
-            <option value="">Default Template</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <button className="btn btn-outline-primary text-nowrap" onClick={handleExport}>
+          <button className="btn btn-primary text-nowrap" onClick={handleExport}>
             Export PDF
           </button>
         </div>
@@ -184,7 +159,9 @@ export default function ResumeDetailPage() {
       <div className="row g-4">
         <div className="col-lg-7">
           <div className="card mb-4 shadow-sm border-0">
-            <div className="card-header bg-light fw-semibold">Live Preview</div>
+            <div className="card-header bg-light fw-semibold d-flex justify-content-between align-items-center">
+              <span>Live Preview ({getTemplateName(resume.templateId)})</span>
+            </div>
             <div className="card-body p-0">
               <iframe
                 title="Resume preview"
@@ -203,7 +180,7 @@ export default function ResumeDetailPage() {
                 <textarea
                   className="form-control mb-2"
                   rows={4}
-                  placeholder='e.g. "I just finished a 4-month role as a Full Stack Software Engineer at Acme working on microservices using Laravel and React"'
+                  placeholder='e.g. "I just completed a 4-month role as a Full Stack Engineer at Acme working on microservices with React and Node.js"'
                   value={updateInput}
                   onChange={(e) => setUpdateInput(e.target.value)}
                 />
@@ -211,7 +188,7 @@ export default function ResumeDetailPage() {
                   <div className="alert alert-danger py-2 small">{error}</div>
                 )}
                 <button className="btn btn-primary w-100" disabled={updating}>
-                  {updating ? "Updating…" : "Submit Update with AI"}
+                  {updating ? "Updating with AI…" : "Submit Update with AI"}
                 </button>
               </form>
             </div>
