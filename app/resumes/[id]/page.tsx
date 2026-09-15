@@ -16,6 +16,7 @@ type Version = {
   id: string;
   versionNumber: number;
   changeSummary: string;
+  snapshotJson: string;
   createdAt: string;
 };
 
@@ -38,6 +39,10 @@ export default function ResumeDetailPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [showCommitModal, setShowCommitModal] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [committing, setCommitting] = useState(false);
+  const [rollingBackId, setRollingBackId] = useState<string | null>(null);
 
   const loadResume = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}`);
@@ -103,14 +108,53 @@ export default function ResumeDetailPage() {
     }
   }
 
-  async function handleRollback(versionId: string) {
-    if (!confirm("Roll back the resume to this version?")) return;
-    const res = await fetch(`/api/resumes/${resumeId}/versions/${versionId}`, {
-      method: "POST",
-    });
-    if (res.ok) {
-      await Promise.all([loadResume(), loadVersions()]);
-      await loadPreview();
+  async function handleRollback(version: Version) {
+    if (
+      !confirm(
+        `Roll back to v${version.versionNumber}? This will permanently delete every version committed after it. This cannot be undone.`
+      )
+    )
+      return;
+    setRollingBackId(version.id);
+    try {
+      const res = await fetch(`/api/resumes/${resumeId}/versions/${version.id}`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        await Promise.all([loadResume(), loadVersions()]);
+        await loadPreview();
+      }
+    } finally {
+      setRollingBackId(null);
+    }
+  }
+
+  function openCommitModal() {
+    setCommitMessage("");
+    setError("");
+    setShowCommitModal(true);
+  }
+
+  async function handleCommit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!commitMessage.trim()) return;
+    setError("");
+    setCommitting(true);
+    try {
+      const res = await fetch(`/api/resumes/${resumeId}/commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ changeSummary: commitMessage }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Commit failed");
+      setShowCommitModal(false);
+      setCommitMessage("");
+      await loadVersions();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCommitting(false);
     }
   }
 
@@ -147,6 +191,10 @@ export default function ResumeDetailPage() {
     json = {};
   }
 
+  const latestVersion = versions[0];
+  const hasUncommittedChanges =
+    !latestVersion || latestVersion.snapshotJson !== resume.currentJson;
+
   return (
     <div>
       <div className="d-flex justify-content-between align-items-start mb-4">
@@ -165,6 +213,18 @@ export default function ResumeDetailPage() {
           </small>
         </div>
         <div className="d-flex gap-2">
+          <button
+            className="btn btn-success text-nowrap"
+            onClick={openCommitModal}
+            disabled={!hasUncommittedChanges}
+            title={
+              hasUncommittedChanges
+                ? "Commit the current changes as a new version"
+                : "No changes to commit"
+            }
+          >
+            {hasUncommittedChanges ? "Stage & Commit" : "No Changes to Commit"}
+          </button>
           <button className="btn btn-primary text-nowrap" onClick={handleExport}>
             Export PDF
           </button>
@@ -177,6 +237,12 @@ export default function ResumeDetailPage() {
           </button>
         </div>
       </div>
+
+      {hasUncommittedChanges && (
+        <div className="alert alert-warning py-2 small mb-4">
+          You have uncommitted changes. Click <strong>Stage &amp; Commit</strong> to save them to version history.
+        </div>
+      )}
 
       <div className="row g-4">
         <div className="col-lg-7">
@@ -217,8 +283,11 @@ export default function ResumeDetailPage() {
           </div>
 
           <div className="card mb-4 shadow-sm border-0">
-            <div className="card-header bg-light fw-semibold">Version History</div>
+            <div className="card-header bg-light fw-semibold">Commit History</div>
             <ul className="list-group list-group-flush" style={{ maxHeight: "250px", overflowY: "auto" }}>
+              {versions.length === 0 && (
+                <li className="list-group-item small text-secondary">No commits yet.</li>
+              )}
               {versions.map((v) => (
                 <li
                   key={v.id}
@@ -232,11 +301,17 @@ export default function ResumeDetailPage() {
                     </div>
                   </div>
                   <button
-                    className="btn btn-xs btn-outline-secondary py-0 px-2"
+                    className="btn btn-xs btn-outline-secondary py-0 px-2 text-nowrap"
                     style={{ fontSize: "0.75rem" }}
-                    onClick={() => handleRollback(v.id)}
+                    onClick={() => handleRollback(v)}
+                    disabled={rollingBackId === v.id || v === versions[0]}
+                    title={
+                      v === versions[0]
+                        ? "This is already the latest committed version"
+                        : "Roll back and delete all versions after this one"
+                    }
                   >
-                    Restore
+                    {rollingBackId === v.id ? "Rolling back…" : "Rollback"}
                   </button>
                 </li>
               ))}
@@ -253,6 +328,65 @@ export default function ResumeDetailPage() {
           </div>
         </div>
       </div>
+
+      {showCommitModal && (
+        <div
+          className="modal d-block"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          role="dialog"
+          onClick={() => !committing && setShowCommitModal(false)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-content">
+              <form onSubmit={handleCommit}>
+                <div className="modal-header">
+                  <h5 className="modal-title">Commit Changes</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => setShowCommitModal(false)}
+                    disabled={committing}
+                  />
+                </div>
+                <div className="modal-body">
+                  <label className="form-label small fw-semibold">Commit message</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="e.g. Added Acme Full Stack Engineer role"
+                    value={commitMessage}
+                    onChange={(e) => setCommitMessage(e.target.value)}
+                    autoFocus
+                  />
+                  {error && (
+                    <div className="alert alert-danger py-2 small mt-2 mb-0">{error}</div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={() => setShowCommitModal(false)}
+                    disabled={committing}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-success"
+                    disabled={committing || !commitMessage.trim()}
+                  >
+                    {committing ? "Committing…" : "Commit"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

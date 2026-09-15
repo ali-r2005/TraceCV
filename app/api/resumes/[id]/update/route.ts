@@ -1,16 +1,17 @@
 import "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
-import { eq, desc } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { resumes, resumeVersions, templates } from "@/lib/db/schema";
+import { resumes, templates } from "@/lib/db/schema";
 import { updateResumeJson } from "@/lib/ai/resumeUpdaterAgent";
 
 /**
  * Deploys Agent 2 (JSON Source-of-Truth Updater). Accepts a natural language
  * update, optionally passes the active template's JSON schema, merges it into the
- * current resume JSON via LangChain structured output, validates the result,
- * persists it as the new `current_json`, and writes a new snapshot to resume_versions.
+ * current resume JSON via LangChain structured output, validates the result, and
+ * persists it as the new `current_json`. This only updates the working copy —
+ * no version snapshot is created here; the user must explicitly commit via
+ * POST /api/resumes/[id]/commit to record history.
  */
 export async function POST(
   req: NextRequest,
@@ -18,9 +19,8 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { userUpdateInput, changeSummary, templateId } = body as {
+  const { userUpdateInput, templateId } = body as {
     userUpdateInput?: string;
-    changeSummary?: string;
     templateId?: string;
   };
 
@@ -76,15 +76,6 @@ export async function POST(
 
   const now = new Date().toISOString();
 
-  const [lastVersion] = await db
-    .select()
-    .from(resumeVersions)
-    .where(eq(resumeVersions.resumeId, id))
-    .orderBy(desc(resumeVersions.versionNumber))
-    .limit(1);
-
-  const nextVersionNumber = (lastVersion?.versionNumber ?? 0) + 1;
-
   await db
     .update(resumes)
     .set({
@@ -94,18 +85,8 @@ export async function POST(
     })
     .where(eq(resumes.id, id));
 
-  await db.insert(resumeVersions).values({
-    id: uuidv4(),
-    resumeId: id,
-    versionNumber: nextVersionNumber,
-    changeSummary: changeSummary || userUpdateInput.slice(0, 200),
-    snapshotJson: JSON.stringify(updatedJson),
-    createdAt: now,
-  });
-
   return NextResponse.json({
     resumeId: id,
-    versionNumber: nextVersionNumber,
     currentJson: updatedJson,
   });
 }
