@@ -35,6 +35,12 @@ export function ensureSchema() {
       schema_json TEXT NOT NULL DEFAULT '{}',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Ensure column additions if database existed previously

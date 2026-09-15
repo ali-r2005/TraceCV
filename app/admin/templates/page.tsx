@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useId } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   STANDARD_RESUME_JSON_SCHEMA,
@@ -240,6 +241,20 @@ export default function AdminTemplatesPage() {
           </button>
         </div>
       </div>
+
+      {/* Admin Navigation Tabs */}
+      <ul className="nav nav-tabs mb-4">
+        <li className="nav-item">
+          <Link className="nav-link active fw-semibold" href="/admin/templates">
+            Templates & Schemas
+          </Link>
+        </li>
+        <li className="nav-item">
+          <Link className="nav-link" href="/admin/settings">
+            API Keys & Models
+          </Link>
+        </li>
+      </ul>
 
       <div className="row g-4">
         {/* Left Column: Upload / Create Template */}

@@ -1,30 +1,51 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { getApiKeyFromDb } from "./secrets";
+import { getModelById, type AIProvider } from "./models";
+
+export type ChatModelOptions = {
+  modelId?: string;
+  provider?: AIProvider;
+  temperature?: number;
+};
 
 /**
- * Returns the configured chat model for the LangChain agents. Provider is
- * chosen via AI_PROVIDER ("openai" | "gemini"), defaulting to "openai".
+ * Returns the configured chat model for LangChain agents.
+ * API keys are fetched strictly from the SQLite database.
  */
-export function getChatModel(temperature: number) {
-  const provider = (process.env.AI_PROVIDER || "openai").toLowerCase();
+export function getChatModel(options: ChatModelOptions | number = 0) {
+  const temperature =
+    typeof options === "number" ? options : options.temperature ?? 0;
+  const requestedModelId =
+    typeof options === "object" ? options.modelId : undefined;
+  const requestedProvider =
+    typeof options === "object" ? options.provider : undefined;
+
+  const modelInfo = getModelById(requestedModelId);
+  const provider: AIProvider =
+    requestedProvider || (modelInfo ? modelInfo.provider : "gemini");
+  const modelName = modelInfo ? modelInfo.id : (provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o");
+
+  const apiKey = getApiKeyFromDb(provider);
+
+  if (!apiKey) {
+    const providerName = provider === "gemini" ? "Google Gemini" : "OpenAI";
+    throw new Error(
+      `${providerName} API key is not configured in the database. Please visit the Admin Portal (/admin/settings) to configure the API key.`
+    );
+  }
 
   if (provider === "gemini") {
-    if (!process.env.GOOGLE_API_KEY) {
-      throw new Error(
-        "GOOGLE_API_KEY is not set. Get a key from Google AI Studio and add it to .env.local."
-      );
-    }
     return new ChatGoogleGenerativeAI({
-      model: process.env.AI_MODEL || "gemini-2.5-flash",
+      model: modelName,
       temperature,
-      apiKey: process.env.GOOGLE_API_KEY,
+      apiKey,
     });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error(
-      "OPENAI_API_KEY is not set. Add it to .env.local, or set AI_PROVIDER=gemini and GOOGLE_API_KEY instead."
-    );
-  }
-  return new ChatOpenAI({ modelName: "gpt-4o", temperature });
+  return new ChatOpenAI({
+    modelName,
+    temperature,
+    openAIApiKey: apiKey,
+  });
 }

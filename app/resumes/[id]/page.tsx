@@ -25,6 +25,15 @@ type TemplateSummary = {
   name: string;
 };
 
+type ModelOption = {
+  id: string;
+  name: string;
+  provider: "gemini" | "openai";
+  description: string;
+  isAvailable: boolean;
+  isDefault?: boolean;
+};
+
 export default function ResumeDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -33,6 +42,9 @@ export default function ResumeDetailPage() {
   const [resume, setResume] = useState<ResumeRecord | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string>("gemini-2.5-flash");
+
   const [previewHtml, setPreviewHtml] = useState("");
   const [updateInput, setUpdateInput] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -71,12 +83,24 @@ export default function ResumeDetailPage() {
       fetch(`/api/resumes/${resumeId}`).then((r) => (r.ok ? r.json() : null)),
       fetch(`/api/resumes/${resumeId}/versions`).then((r) => (r.ok ? r.json() : [])),
       fetch(`/api/templates`).then((r) => (r.ok ? r.json() : [])),
+      fetch(`/api/ai/models`).then((r) => (r.ok ? r.json() : { models: [] })),
       fetch(`/api/resumes/${resumeId}/render`).then((r) => (r.ok ? r.text() : "")),
-    ]).then(([resumeData, versionsData, templatesData, previewData]) => {
+    ]).then(([resumeData, versionsData, templatesData, modelsData, previewData]) => {
       if (ignore) return;
       if (resumeData) setResume(resumeData);
       setVersions(versionsData);
       setTemplates(templatesData);
+      const fetchedModels: ModelOption[] = modelsData.models || [];
+      setModels(fetchedModels);
+
+      // Default to first available model or default model
+      const firstAvailable = fetchedModels.find((m) => m.isAvailable);
+      if (firstAvailable) {
+        setSelectedModelId(firstAvailable.id);
+      } else if (fetchedModels.length > 0) {
+        setSelectedModelId(fetchedModels[0].id);
+      }
+
       setPreviewHtml(previewData);
       setLoading(false);
     });
@@ -97,6 +121,7 @@ export default function ResumeDetailPage() {
         body: JSON.stringify({
           userUpdateInput: updateInput,
           templateId: resume?.templateId || undefined,
+          modelId: selectedModelId,
         }),
       });
       const data = await res.json();
@@ -110,6 +135,10 @@ export default function ResumeDetailPage() {
       setUpdating(false);
     }
   }
+
+  const latestVersion = versions[0];
+  const hasUncommittedChanges =
+    !latestVersion || (resume && latestVersion.snapshotJson !== resume.currentJson);
 
   async function handleRollback(version: Version) {
     const isTipWithUncommitted =
@@ -211,9 +240,8 @@ export default function ResumeDetailPage() {
     json = {};
   }
 
-  const latestVersion = versions[0];
-  const hasUncommittedChanges =
-    !latestVersion || latestVersion.snapshotJson !== resume.currentJson;
+  const selectedModel = models.find((m) => m.id === selectedModelId);
+  const isSelectedModelAvailable = selectedModel?.isAvailable ?? false;
 
   return (
     <div>
@@ -282,20 +310,81 @@ export default function ResumeDetailPage() {
 
         <div className="col-lg-5">
           <div className="card mb-4 shadow-sm border-0">
-            <div className="card-header bg-light fw-semibold">Update Resume (AI Agent)</div>
+            <div className="card-header bg-light fw-semibold d-flex justify-content-between align-items-center">
+              <span>Update Resume (AI Agent)</span>
+            </div>
             <div className="card-body">
               <form onSubmit={handleUpdate}>
-                <textarea
-                  className="form-control mb-2"
-                  rows={4}
-                  placeholder='e.g. "I just completed a 4-month role as a Full Stack Engineer at Acme working on microservices with React and Node.js"'
-                  value={updateInput}
-                  onChange={(e) => setUpdateInput(e.target.value)}
-                />
+                {/* AI Model Switcher */}
+                <div className="mb-3">
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <label className="form-label small fw-semibold mb-0">Select AI Model</label>
+                    {selectedModel && (
+                      <span
+                        className={`badge ${
+                          selectedModel.provider === "gemini" ? "bg-info text-dark" : "bg-dark"
+                        }`}
+                        style={{ fontSize: "0.72rem" }}
+                      >
+                        {selectedModel.provider === "gemini" ? "Google Gemini" : "OpenAI"}
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    className="form-select form-select-sm"
+                    value={selectedModelId}
+                    onChange={(e) => setSelectedModelId(e.target.value)}
+                    disabled={updating}
+                  >
+                    <optgroup label="Google Gemini">
+                      {models
+                        .filter((m) => m.provider === "gemini")
+                        .map((m) => (
+                          <option key={m.id} value={m.id} disabled={!m.isAvailable}>
+                            {m.name} {!m.isAvailable ? "— (Key not set in Admin DB)" : ""}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="OpenAI">
+                      {models
+                        .filter((m) => m.provider === "openai")
+                        .map((m) => (
+                          <option key={m.id} value={m.id} disabled={!m.isAvailable}>
+                            {m.name} {!m.isAvailable ? "— (Key not set in Admin DB)" : ""}
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                  {selectedModel && (
+                    <div className="text-muted small mt-1" style={{ fontSize: "0.78rem" }}>
+                      {selectedModel.description}
+                    </div>
+                  )}
+                  {!isSelectedModelAvailable && (
+                    <div className="alert alert-warning py-1 px-2 small mt-2 mb-0" style={{ fontSize: "0.75rem" }}>
+                      The API key for this model is not configured yet in the database. Please configure it in the <Link href="/admin/settings">Admin Portal</Link>.
+                    </div>
+                  )}
+                </div>
+
+                <div className="mb-2">
+                  <label className="form-label small fw-semibold">Prompt Instructions</label>
+                  <textarea
+                    className="form-control mb-2"
+                    rows={4}
+                    placeholder='e.g. "I just completed a 4-month role as a Full Stack Engineer at Acme working on microservices with React and Node.js"'
+                    value={updateInput}
+                    onChange={(e) => setUpdateInput(e.target.value)}
+                  />
+                </div>
+
                 {error && (
                   <div className="alert alert-danger py-2 small">{error}</div>
                 )}
-                <button className="btn btn-primary w-100" disabled={updating}>
+                <button
+                  className="btn btn-primary w-100"
+                  disabled={updating || !isSelectedModelAvailable}
+                >
                   {updating ? "Updating with AI…" : "Submit Update with AI"}
                 </button>
               </form>

@@ -4,16 +4,17 @@ import { ResumeSchema, type ResumeJson } from "./schemas";
 /**
  * Agent 2: Dynamic JSON Source-of-Truth Updater Agent
  *
- * Takes a natural language update alongside current JSON state and the active
- * template's JSON schema, updates/formats the data to strictly match the schema,
- * and returns the updated JSON object.
+ * Takes a natural language update alongside current JSON state, active
+ * template's JSON schema, and selected AI modelId, updates/formats the data
+ * to strictly match the schema, and returns the updated JSON object.
  */
 export async function updateResumeJson(
   currentJson: Record<string, unknown>,
   userUpdateInput: string,
-  customSchema?: Record<string, unknown> | null
+  customSchema?: Record<string, unknown> | null,
+  modelId?: string
 ): Promise<Record<string, unknown>> {
-  const llm = getChatModel(0);
+  const llm = getChatModel({ modelId, temperature: 0 });
 
   // If a custom schema is provided, use dynamic schema instruction & structured output
   if (customSchema && typeof customSchema === "object" && Object.keys(customSchema).length > 0) {

@@ -7,11 +7,9 @@ import { updateResumeJson } from "@/lib/ai/resumeUpdaterAgent";
 
 /**
  * Deploys Agent 2 (JSON Source-of-Truth Updater). Accepts a natural language
- * update, optionally passes the active template's JSON schema, merges it into the
+ * update, active templateId, and selected AI modelId, merges it into the
  * current resume JSON via LangChain structured output, validates the result, and
- * persists it as the new `current_json`. This only updates the working copy —
- * no version snapshot is created here; the user must explicitly commit via
- * POST /api/resumes/[id]/commit to record history.
+ * persists it as the new `current_json`.
  */
 export async function POST(
   req: NextRequest,
@@ -19,9 +17,10 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { userUpdateInput, templateId } = body as {
+  const { userUpdateInput, templateId, modelId } = body as {
     userUpdateInput?: string;
     templateId?: string;
+    modelId?: string;
   };
 
   if (!userUpdateInput || !userUpdateInput.trim()) {
@@ -65,7 +64,12 @@ export async function POST(
 
   let updatedJson: Record<string, unknown>;
   try {
-    updatedJson = await updateResumeJson(currentJson, userUpdateInput, customSchema);
+    updatedJson = await updateResumeJson(
+      currentJson,
+      userUpdateInput,
+      customSchema,
+      modelId
+    );
   } catch (err) {
     console.error("Agent 2 (resume updater) failed:", err);
     return NextResponse.json(

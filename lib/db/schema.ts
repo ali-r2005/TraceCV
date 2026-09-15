@@ -41,9 +41,20 @@ export const templates = sqliteTable("templates", {
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+/**
+ * 4. App Settings — Stores application configuration and API secrets strictly in DB.
+ */
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
 export type Resume = typeof resumes.$inferSelect;
 export type NewResume = typeof resumes.$inferInsert;
 export type ResumeVersion = typeof resumeVersions.$inferSelect;
 export type NewResumeVersion = typeof resumeVersions.$inferInsert;
 export type Template = typeof templates.$inferSelect;
 export type NewTemplate = typeof templates.$inferInsert;
+export type AppSetting = typeof appSettings.$inferSelect;
+export type NewAppSetting = typeof appSettings.$inferInsert;
