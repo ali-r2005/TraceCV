@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 type ResumeRecord = {
@@ -26,6 +26,7 @@ type TemplateSummary = {
 
 export default function ResumeDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const resumeId = params.id;
 
   const [resume, setResume] = useState<ResumeRecord | null>(null);
@@ -36,6 +37,7 @@ export default function ResumeDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   const loadResume = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}`);
@@ -116,6 +118,19 @@ export default function ResumeDetailPage() {
     window.open(`/api/resumes/${resumeId}/export`, "_blank");
   }
 
+  async function handleDelete() {
+    if (!confirm("Are you sure you want to delete this resume? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/resumes/${resumeId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      router.push("/resumes");
+    } catch (err) {
+      setError((err as Error).message);
+      setDeleting(false);
+    }
+  }
+
   function getTemplateName(templateId?: string | null) {
     if (!templateId) return "Default Template";
     const found = templates.find((t) => t.id === templateId);
@@ -152,6 +167,13 @@ export default function ResumeDetailPage() {
         <div className="d-flex gap-2">
           <button className="btn btn-primary text-nowrap" onClick={handleExport}>
             Export PDF
+          </button>
+          <button
+            className="btn btn-danger text-nowrap"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting…" : "Delete"}
           </button>
         </div>
       </div>
