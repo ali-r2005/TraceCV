@@ -43,6 +43,9 @@ export default function ResumeDetailPage() {
   const [commitMessage, setCommitMessage] = useState("");
   const [committing, setCommitting] = useState(false);
   const [rollingBackId, setRollingBackId] = useState<string | null>(null);
+  const [viewingVersion, setViewingVersion] = useState<Version | null>(null);
+  const [viewingHtml, setViewingHtml] = useState("");
+  const [viewingLoading, setViewingLoading] = useState(false);
 
   const loadResume = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}`);
@@ -109,12 +112,12 @@ export default function ResumeDetailPage() {
   }
 
   async function handleRollback(version: Version) {
-    if (
-      !confirm(
-        `Roll back to v${version.versionNumber}? This will permanently delete every version committed after it. This cannot be undone.`
-      )
-    )
-      return;
+    const isTipWithUncommitted =
+      version === versions[0] && hasUncommittedChanges;
+    const message = isTipWithUncommitted
+      ? `Discard uncommitted changes and restore v${version.versionNumber}? This cannot be undone.`
+      : `Roll back to v${version.versionNumber}? This will permanently delete every version committed after it. This cannot be undone.`;
+    if (!confirm(message)) return;
     setRollingBackId(version.id);
     try {
       const res = await fetch(`/api/resumes/${resumeId}/versions/${version.id}`, {
@@ -133,6 +136,23 @@ export default function ResumeDetailPage() {
     setCommitMessage("");
     setError("");
     setShowCommitModal(true);
+  }
+
+  async function openVersionPreview(version: Version) {
+    setViewingVersion(version);
+    setViewingHtml("");
+    setViewingLoading(true);
+    try {
+      const templateParam = resume?.templateId
+        ? `&templateId=${resume.templateId}`
+        : "";
+      const res = await fetch(
+        `/api/resumes/${resumeId}/render?versionId=${version.id}${templateParam}`
+      );
+      if (res.ok) setViewingHtml(await res.text());
+    } finally {
+      setViewingLoading(false);
+    }
   }
 
   async function handleCommit(e: React.FormEvent) {
@@ -300,19 +320,33 @@ export default function ResumeDetailPage() {
                       {new Date(v.createdAt).toLocaleString()}
                     </div>
                   </div>
-                  <button
-                    className="btn btn-xs btn-outline-secondary py-0 px-2 text-nowrap"
-                    style={{ fontSize: "0.75rem" }}
-                    onClick={() => handleRollback(v)}
-                    disabled={rollingBackId === v.id || v === versions[0]}
-                    title={
-                      v === versions[0]
-                        ? "This is already the latest committed version"
-                        : "Roll back and delete all versions after this one"
-                    }
-                  >
-                    {rollingBackId === v.id ? "Rolling back…" : "Rollback"}
-                  </button>
+                  <div className="d-flex gap-1">
+                    <button
+                      className="btn btn-xs btn-outline-primary py-0 px-2 text-nowrap"
+                      style={{ fontSize: "0.75rem" }}
+                      onClick={() => openVersionPreview(v)}
+                    >
+                      View
+                    </button>
+                    <button
+                      className="btn btn-xs btn-outline-secondary py-0 px-2 text-nowrap"
+                      style={{ fontSize: "0.75rem" }}
+                      onClick={() => handleRollback(v)}
+                      disabled={
+                        rollingBackId === v.id ||
+                        (v === versions[0] && !hasUncommittedChanges)
+                      }
+                      title={
+                        v === versions[0] && !hasUncommittedChanges
+                          ? "This is already the current state"
+                          : v === versions[0]
+                          ? "Discard uncommitted changes and restore this version"
+                          : "Roll back and delete all versions after this one"
+                      }
+                    >
+                      {rollingBackId === v.id ? "Rolling back…" : "Rollback"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -383,6 +417,73 @@ export default function ResumeDetailPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingVersion && (
+        <div
+          className="modal d-block"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          role="dialog"
+          onClick={() => setViewingVersion(null)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered modal-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  v{viewingVersion.versionNumber} &middot;{" "}
+                  <span className="text-secondary fw-normal">
+                    {viewingVersion.changeSummary}
+                  </span>
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setViewingVersion(null)}
+                />
+              </div>
+              <div className="modal-body p-0">
+                <div className="small text-muted px-3 pt-2">
+                  Committed {new Date(viewingVersion.createdAt).toLocaleString()}
+                </div>
+                {viewingLoading ? (
+                  <p className="text-secondary p-3 mb-0">Loading preview…</p>
+                ) : (
+                  <iframe
+                    title="Commit preview"
+                    srcDoc={viewingHtml}
+                    style={{ width: "100%", height: "550px", border: "none" }}
+                  />
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => setViewingVersion(null)}
+                >
+                  Close
+                </button>
+                {(viewingVersion !== versions[0] || hasUncommittedChanges) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={rollingBackId === viewingVersion.id}
+                    onClick={async () => {
+                      const target = viewingVersion;
+                      setViewingVersion(null);
+                      await handleRollback(target);
+                    }}
+                  >
+                    Rollback to this Version
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

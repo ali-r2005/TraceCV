@@ -1,8 +1,8 @@
 import "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { resumes, templates } from "@/lib/db/schema";
+import { resumes, resumeVersions, templates } from "@/lib/db/schema";
 import { renderResumeHtml } from "@/lib/render/renderResume";
 import {
   DEFAULT_TEMPLATE_HTML,
@@ -20,15 +20,28 @@ export async function GET(
 ) {
   const { id } = await params;
   const urlTemplateId = req.nextUrl.searchParams.get("templateId");
+  const versionId = req.nextUrl.searchParams.get("versionId");
 
   const [resume] = await db.select().from(resumes).where(eq(resumes.id, id));
   if (!resume) {
     return NextResponse.json({ error: "Resume not found" }, { status: 404 });
   }
 
+  let snapshotJson = resume.currentJson;
+  if (versionId) {
+    const [version] = await db
+      .select()
+      .from(resumeVersions)
+      .where(and(eq(resumeVersions.resumeId, id), eq(resumeVersions.id, versionId)));
+    if (!version) {
+      return NextResponse.json({ error: "Version not found" }, { status: 404 });
+    }
+    snapshotJson = version.snapshotJson;
+  }
+
   let data: Record<string, unknown>;
   try {
-    data = JSON.parse(resume.currentJson);
+    data = JSON.parse(snapshotJson);
   } catch {
     data = {};
   }

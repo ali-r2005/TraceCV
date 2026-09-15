@@ -17,7 +17,7 @@ export default function RootLayout({
     <html lang="en" data-bs-theme="light">
       <body>
         <NavBar />
-        <main className="container py-4">{children}</main>
+        <main className="container-fluid py-4">{children}</main>
         <BootstrapClient />
       </body>
     </html>
