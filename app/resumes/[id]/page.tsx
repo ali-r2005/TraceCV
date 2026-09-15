@@ -274,7 +274,7 @@ export default function ResumeDetailPage() {
               <iframe
                 title="Resume preview"
                 srcDoc={previewHtml}
-                style={{ width: "100%", height: "600px", border: "none" }}
+                style={{ width: "100%", height: "calc(100vh - 220px)", border: "none" }}
               />
             </div>
           </div>
