@@ -10,6 +10,10 @@ export const resumes = sqliteTable("resumes", {
   title: text("title").notNull(),
   templateId: text("template_id"),
   currentJson: text("current_json").notNull(),
+  resumeGroupId: text("resume_group_id"),
+  language: text("language").notNull().default("en"),
+  syncSourceId: text("sync_source_id"),
+  syncBaseJson: text("sync_base_json"),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });

@@ -9,6 +9,9 @@ type ResumeRecord = {
   title: string;
   templateId?: string | null;
   currentJson: string;
+  resumeGroupId?: string | null;
+  language: string;
+  syncSourceId?: string | null;
   updatedAt: string;
 };
 
@@ -59,6 +62,14 @@ export default function ResumeDetailPage() {
   const [viewingHtml, setViewingHtml] = useState("");
   const [viewingLoading, setViewingLoading] = useState(false);
 
+  const [languages, setLanguages] = useState<ResumeRecord[]>([]);
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [newLanguage, setNewLanguage] = useState("");
+  const [addingLanguage, setAddingLanguage] = useState(false);
+  const [languageError, setLanguageError] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
+
   const loadResume = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}`);
     if (res.ok) {
@@ -77,6 +88,7 @@ export default function ResumeDetailPage() {
     if (res.ok) setPreviewHtml(await res.text());
   }, [resumeId]);
 
+
   useEffect(() => {
     let ignore = false;
     Promise.all([
@@ -85,11 +97,13 @@ export default function ResumeDetailPage() {
       fetch(`/api/templates`).then((r) => (r.ok ? r.json() : [])),
       fetch(`/api/ai/models`).then((r) => (r.ok ? r.json() : { models: [] })),
       fetch(`/api/resumes/${resumeId}/render`).then((r) => (r.ok ? r.text() : "")),
-    ]).then(([resumeData, versionsData, templatesData, modelsData, previewData]) => {
+      fetch(`/api/resumes/${resumeId}/languages`).then((r) => (r.ok ? r.json() : [])),
+    ]).then(([resumeData, versionsData, templatesData, modelsData, previewData, languagesData]) => {
       if (ignore) return;
       if (resumeData) setResume(resumeData);
       setVersions(versionsData);
       setTemplates(templatesData);
+      setLanguages(languagesData);
       const fetchedModels: ModelOption[] = modelsData.models || [];
       setModels(fetchedModels);
 
@@ -211,6 +225,61 @@ export default function ResumeDetailPage() {
     window.open(`/api/resumes/${resumeId}/export`, "_blank");
   }
 
+  function openLanguageModal() {
+    setNewLanguage("");
+    setLanguageError("");
+    setShowLanguageModal(true);
+  }
+
+  async function handleAddLanguage(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newLanguage.trim()) return;
+    setLanguageError("");
+    setAddingLanguage(true);
+    try {
+      const res = await fetch(`/api/resumes/${resumeId}/languages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: newLanguage.trim(), modelId: selectedModelId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add language version");
+      setShowLanguageModal(false);
+      setNewLanguage("");
+      router.push(`/resumes/${data.id}`);
+    } catch (err) {
+      setLanguageError((err as Error).message);
+    } finally {
+      setAddingLanguage(false);
+    }
+  }
+
+  async function handleSync() {
+    setError("");
+    setSyncMessage("");
+    setSyncing(true);
+    try {
+      const res = await fetch(`/api/resumes/${resumeId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: selectedModelId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed");
+      if (data.changed) {
+        setSyncMessage(`Synced ${data.appliedOps} change(s) — review below and commit when ready.`);
+        await loadResume();
+        await loadPreview();
+      } else {
+        setSyncMessage(data.message || "Already up to date.");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function handleDelete() {
     if (!confirm("Are you sure you want to delete this resume? This cannot be undone.")) return;
     setDeleting(true);
@@ -287,9 +356,47 @@ export default function ResumeDetailPage() {
       </div>
 
       {hasUncommittedChanges && (
-        <div className="alert alert-warning py-2 small mb-4">
+        <div className="alert alert-warning py-2 small mb-3">
           You have uncommitted changes. Click <strong>Stage &amp; Commit</strong> to save them to version history.
         </div>
+      )}
+
+      <div className="d-flex align-items-center gap-2 mb-4 flex-wrap">
+        <span className="small text-secondary fw-semibold">Language versions:</span>
+        {languages.map((l) => (
+          <Link
+            key={l.id}
+            href={`/resumes/${l.id}`}
+            className={`btn btn-sm text-nowrap ${
+              l.id === resume.id ? "btn-dark" : "btn-outline-secondary"
+            }`}
+          >
+            {l.language}
+          </Link>
+        ))}
+        <button
+          className="btn btn-sm btn-outline-primary text-nowrap"
+          onClick={openLanguageModal}
+        >
+          + Add Language
+        </button>
+        {resume.syncSourceId && (() => {
+          const sourceLang = languages.find((l) => l.id === resume.syncSourceId);
+          return (
+            <button
+              className="btn btn-sm btn-outline-success text-nowrap"
+              onClick={handleSync}
+              disabled={syncing}
+              title={`Pull changes made on the ${sourceLang?.language || "source"} version and translate them here`}
+            >
+              {syncing ? "Syncing…" : `⟳ Sync from ${sourceLang?.language || "source"}`}
+            </button>
+          );
+        })()}
+      </div>
+
+      {syncMessage && (
+        <div className="alert alert-info py-2 small mb-3">{syncMessage}</div>
       )}
 
       <div className="row g-4">
@@ -503,6 +610,71 @@ export default function ResumeDetailPage() {
                     disabled={committing || !commitMessage.trim()}
                   >
                     {committing ? "Committing…" : "Commit"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLanguageModal && (
+        <div
+          className="modal d-block"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          role="dialog"
+          onClick={() => !addingLanguage && setShowLanguageModal(false)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-content">
+              <form onSubmit={handleAddLanguage}>
+                <div className="modal-header">
+                  <h5 className="modal-title">Add Language Version</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => setShowLanguageModal(false)}
+                    disabled={addingLanguage}
+                  />
+                </div>
+                <div className="modal-body">
+                  <label className="form-label small fw-semibold">Language</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. French, Spanish, German…"
+                    value={newLanguage}
+                    onChange={(e) => setNewLanguage(e.target.value)}
+                    autoFocus
+                  />
+                  <div className="form-text">
+                    Creates a new copy of this resume, translated to the language you
+                    enter by AI. You&apos;ll review it before committing.
+                  </div>
+                  {languageError && (
+                    <div className="alert alert-danger py-2 small mt-2 mb-0">
+                      {languageError}
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={() => setShowLanguageModal(false)}
+                    disabled={addingLanguage}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={addingLanguage || !newLanguage.trim()}
+                  >
+                    {addingLanguage ? "Translating…" : "Create & Translate"}
                   </button>
                 </div>
               </form>

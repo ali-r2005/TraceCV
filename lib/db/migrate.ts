@@ -58,6 +58,20 @@ export function ensureSchema() {
     if (!resumeColumns.some((col) => col.name === "template_id")) {
       sqlite.exec("ALTER TABLE resumes ADD COLUMN template_id TEXT");
     }
+    if (!resumeColumns.some((col) => col.name === "resume_group_id")) {
+      sqlite.exec("ALTER TABLE resumes ADD COLUMN resume_group_id TEXT");
+      // Every pre-existing resume becomes the sole member of its own group.
+      sqlite.exec("UPDATE resumes SET resume_group_id = id WHERE resume_group_id IS NULL");
+    }
+    if (!resumeColumns.some((col) => col.name === "language")) {
+      sqlite.exec("ALTER TABLE resumes ADD COLUMN language TEXT NOT NULL DEFAULT 'en'");
+    }
+    if (!resumeColumns.some((col) => col.name === "sync_source_id")) {
+      sqlite.exec("ALTER TABLE resumes ADD COLUMN sync_source_id TEXT");
+    }
+    if (!resumeColumns.some((col) => col.name === "sync_base_json")) {
+      sqlite.exec("ALTER TABLE resumes ADD COLUMN sync_base_json TEXT");
+    }
   } catch (err) {
     console.error("Migration column check error:", err);
   }

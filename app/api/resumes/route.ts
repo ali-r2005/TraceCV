@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
     title: resumeTitle,
     templateId,
     currentJson: JSON.stringify(json),
+    resumeGroupId: id,
+    language: "en",
     createdAt: now,
     updatedAt: now,
   });
