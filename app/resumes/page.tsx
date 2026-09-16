@@ -8,6 +8,8 @@ type Resume = {
   id: string;
   title: string;
   templateId?: string | null;
+  resumeGroupId?: string | null;
+  language: string;
   updatedAt: string;
 };
 
@@ -102,6 +104,12 @@ function ResumesDashboard() {
     const found = templates.find((t) => t.id === templateId);
     return found ? found.name : "Custom Template";
   }
+
+  // Only show the original resume per group — language versions cloned
+  // from it (resumeGroupId !== id) are hidden from this list.
+  const parentResumes = resumes.filter(
+    (r) => !r.resumeGroupId || r.resumeGroupId === r.id
+  );
 
   return (
     <div>
@@ -203,13 +211,13 @@ function ResumesDashboard() {
 
       {loading ? (
         <p className="text-secondary">Loading resumes…</p>
-      ) : resumes.length === 0 ? (
+      ) : parentResumes.length === 0 ? (
         <div className="card border-0 shadow-sm p-4 text-center text-secondary">
           No resumes yet. Click <strong>+ New Resume</strong> or choose a template from the Templates gallery.
         </div>
       ) : (
         <div className="list-group shadow-sm">
-          {resumes.map((r) => (
+          {parentResumes.map((r) => (
             <Link
               key={r.id}
               href={`/resumes/${r.id}`}
