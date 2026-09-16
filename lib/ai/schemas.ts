@@ -85,3 +85,33 @@ export const TemplateSchema = z.object({
 });
 
 export type GeneratedTemplate = z.infer<typeof TemplateSchema>;
+
+/**
+ * RFC 6902 JSON Patch schema used by Agent 2 to describe only the fields
+ * that changed, rather than re-emitting the entire resume JSON on every
+ * update. "value" is omitted for "remove" operations.
+ */
+export const JsonPatchOperationSchema = z.object({
+  op: z
+    .enum(["add", "remove", "replace"])
+    .describe("JSON Patch operation type"),
+  path: z
+    .string()
+    .describe(
+      'JSON Pointer to the target field, e.g. "/workExperience/0/highlights/1"'
+    ),
+  value: z
+    .any()
+    .optional()
+    .describe('New value for "add"/"replace". Omit for "remove".'),
+});
+
+export const JsonPatchSchema = z.object({
+  patch: z
+    .array(JsonPatchOperationSchema)
+    .describe(
+      "Minimal list of JSON Patch operations that fully applies the user's requested change. Do not include unchanged fields."
+    ),
+});
+
+export type JsonPatchOperation = z.infer<typeof JsonPatchOperationSchema>;

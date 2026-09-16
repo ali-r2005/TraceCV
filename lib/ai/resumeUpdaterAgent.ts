@@ -1,12 +1,15 @@
+import { applyPatch, type Operation } from "fast-json-patch";
 import { getChatModel } from "./chatModel";
-import { ResumeSchema, type ResumeJson } from "./schemas";
+import { ResumeSchema, JsonPatchSchema, type JsonPatchOperation } from "./schemas";
 
 /**
  * Agent 2: Dynamic JSON Source-of-Truth Updater Agent
  *
  * Takes a natural language update alongside current JSON state, active
- * template's JSON schema, and selected AI modelId, updates/formats the data
- * to strictly match the schema, and returns the updated JSON object.
+ * template's JSON schema, and selected AI modelId. Rather than having the
+ * model re-emit the entire resume on every edit, it asks for a minimal
+ * RFC 6902 JSON Patch (op/path/value) describing only what changed, applies
+ * that patch locally, and returns the resulting full JSON object.
  */
 export async function updateResumeJson(
   currentJson: Record<string, unknown>,
@@ -16,91 +19,30 @@ export async function updateResumeJson(
 ): Promise<Record<string, unknown>> {
   const llm = getChatModel({ modelId, temperature: 0 });
 
-  // If a custom schema is provided, use dynamic schema instruction & structured output
-  if (customSchema && typeof customSchema === "object" && Object.keys(customSchema).length > 0) {
-    const schemaTitle =
-      typeof customSchema.title === "string"
-        ? customSchema.title
-        : "CustomResumeTemplateData";
-    
-    // Check if we can use structured output directly with the JSON schema
-    let structuredLlm;
-    try {
-      structuredLlm = llm.withStructuredOutput({
-        name: schemaTitle,
-        description: "Updated resume data strictly matching the template schema",
-        parameters: customSchema,
-      });
-    } catch {
-      // Fallback if provider doesn't support raw parameter object
-      structuredLlm = null;
-    }
-
-    const systemPrompt = `
-You are an expert AI Resume Editor.
-Your objective is to update the user's resume data while strictly respecting the template's JSON Schema.
-
-TARGET JSON SCHEMA:
-${JSON.stringify(customSchema, null, 2)}
-
-RULES:
-1. Parse the user's natural language update input.
-2. Update, append, or modify the appropriate fields according to the TARGET JSON SCHEMA.
-3. Keep pre-existing data intact unless the user explicitly requested modifying or removing it.
-4. Formulate strong, action-driven bullet points using Google's X-Y-Z formula ("Accomplished X as measured by Y by doing Z") where applicable.
-5. You MUST ensure the returned JSON strictly matches the target schema properties and types.
-`;
-
-    if (structuredLlm) {
-      const response = await structuredLlm.invoke([
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `CURRENT RESUME DATA:\n${JSON.stringify(
-            currentJson,
-            null,
-            2
-          )}\n\nUSER UPDATE REQUEST:\n${userUpdateInput}`,
-        },
-      ]);
-      return response as Record<string, unknown>;
-    } else {
-      // Prompt LLM for strict JSON output and parse
-      const response = await llm.invoke([
-        {
-          role: "system",
-          content: `${systemPrompt}\nIMPORTANT: Respond ONLY with a valid JSON object matching the schema. Do not enclose in markdown blocks.`,
-        },
-        {
-          role: "user",
-          content: `CURRENT RESUME DATA:\n${JSON.stringify(
-            currentJson,
-            null,
-            2
-          )}\n\nUSER UPDATE REQUEST:\n${userUpdateInput}`,
-        },
-      ]);
-
-      const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
-      const cleanJson = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      return JSON.parse(cleanJson);
-    }
-  }
-
-  // Fallback to standard master ResumeSchema
-  const structuredLlm = llm.withStructuredOutput(ResumeSchema);
+  const targetSchemaDescription =
+    customSchema && typeof customSchema === "object" && Object.keys(customSchema).length > 0
+      ? `TARGET JSON SCHEMA (the resume must conform to this):\n${JSON.stringify(customSchema, null, 2)}`
+      : "TARGET JSON SCHEMA: the standard resume schema (basics, workExperience, education, skills, projects).";
 
   const systemPrompt = `
 You are an expert AI Resume Editor.
-Your objective is to update the user's JSON Resume Source of Truth while strictly maintaining structure.
+You do NOT rewrite the whole resume. You return a minimal RFC 6902 JSON Patch
+(a list of { op, path, value } operations) describing ONLY the fields that
+need to change to satisfy the user's request.
+
+${targetSchemaDescription}
 
 RULES:
 1. Parse the user's natural language update input.
-2. Identify target section (e.g., adding an entry to "workExperience", appending "skills", updating "basics").
-3. Append the new item inside the appropriate array while leaving pre-existing entries intact.
-4. Formulate strong, action-driven bullet points using Google's X-Y-Z formula ("Accomplished X as measured by Y by doing Z").
-5. Ensure all required schema fields are populated accurately.
+2. Locate the exact JSON Pointer path(s) inside CURRENT RESUME JSON that need to change.
+3. Use "add" to insert a new array item or new field, "replace" to overwrite an existing value, "remove" to delete one.
+4. To append to an array, use "add" with path ending in "/-" (e.g. "/workExperience/-").
+5. Do NOT include operations for fields that are not changing.
+6. Formulate strong, action-driven bullet points using Google's X-Y-Z formula ("Accomplished X as measured by Y by doing Z") where applicable.
+7. Every path MUST exist or be a valid insertion point in CURRENT RESUME JSON — do not invent unrelated structure.
 `;
+
+  const structuredLlm = llm.withStructuredOutput(JsonPatchSchema);
 
   const response = await structuredLlm.invoke([
     { role: "system", content: systemPrompt },
@@ -114,5 +56,27 @@ RULES:
     },
   ]);
 
-  return response as ResumeJson;
+  const patchOps = response.patch as Operation[];
+  console.log("AI-generated JSON Patch operations:", patchOps);
+  if (!patchOps || patchOps.length === 0) {
+    throw new Error("The AI did not return any changes to apply.");
+  }
+
+  const result = applyPatch(currentJson, patchOps, true, false);
+  const updatedJson = result.newDocument as Record<string, unknown>;
+
+  // Validate against the standard schema when no custom template schema overrides it.
+  if (!customSchema || Object.keys(customSchema).length === 0) {
+    const validated = ResumeSchema.safeParse(updatedJson);
+    if (!validated.success) {
+      throw new Error(
+        `AI patch produced an invalid resume: ${validated.error.message}`
+      );
+    }
+    return validated.data;
+  }
+
+  return updatedJson;
 }
+
+export type { JsonPatchOperation };
