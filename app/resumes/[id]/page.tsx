@@ -70,11 +70,18 @@ export default function ResumeDetailPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
 
+  const [jsonDraft, setJsonDraft] = useState("");
+  const [jsonError, setJsonError] = useState("");
+  const [savingJson, setSavingJson] = useState(false);
+  const [jsonDirty, setJsonDirty] = useState(false);
+
   const loadResume = useCallback(async () => {
     const res = await fetch(`/api/resumes/${resumeId}`);
     if (res.ok) {
       const data = await res.json();
       setResume(data);
+      setJsonDraft(JSON.stringify(JSON.parse(data.currentJson), null, 2));
+      setJsonDirty(false);
     }
   }, [resumeId]);
 
@@ -116,6 +123,7 @@ export default function ResumeDetailPage() {
       }
 
       setPreviewHtml(previewData);
+      if (resumeData) setJsonDraft(JSON.stringify(JSON.parse(resumeData.currentJson), null, 2));
       setLoading(false);
     });
     return () => {
@@ -277,6 +285,36 @@ export default function ResumeDetailPage() {
       setError((err as Error).message);
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handleSaveJson() {
+    setJsonError("");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonDraft);
+    } catch (err) {
+      setJsonError(`Invalid JSON: ${(err as Error).message}`);
+      return;
+    }
+    setSavingJson(true);
+    try {
+      const res = await fetch(`/api/resumes/${resumeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentJson: parsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.details ? `${data.error}\n${data.details}` : data.error);
+      }
+      setJsonDirty(false);
+      await Promise.all([loadResume(), loadVersions()]);
+      await loadPreview();
+    } catch (err) {
+      setJsonError((err as Error).message);
+    } finally {
+      setSavingJson(false);
     }
   }
 
@@ -549,11 +587,51 @@ export default function ResumeDetailPage() {
           </div>
 
           <div className="card shadow-sm border-0">
-            <div className="card-header bg-light fw-semibold">Source of Truth JSON</div>
+            <div className="card-header bg-light fw-semibold d-flex justify-content-between align-items-center">
+              <span>Source of Truth JSON (Manual Editor)</span>
+              {jsonDirty && <span className="badge bg-warning text-dark">Unsaved</span>}
+            </div>
             <div className="card-body">
-              <pre className="small mb-0 font-monospace" style={{ maxHeight: 250, overflow: "auto" }}>
-                {JSON.stringify(json, null, 2)}
-              </pre>
+              <textarea
+                className="form-control small font-monospace"
+                style={{ height: 300, resize: "vertical" }}
+                spellCheck={false}
+                value={jsonDraft}
+                onChange={(e) => {
+                  setJsonDraft(e.target.value);
+                  setJsonDirty(true);
+                  setJsonError("");
+                }}
+              />
+              {jsonError && (
+                <div className="alert alert-danger py-2 small mt-2 mb-0" style={{ whiteSpace: "pre-wrap" }}>
+                  {jsonError}
+                </div>
+              )}
+              <div className="d-flex gap-2 mt-2">
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleSaveJson}
+                  disabled={savingJson || !jsonDirty}
+                >
+                  {savingJson ? "Saving…" : "Save JSON"}
+                </button>
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => {
+                    setJsonDraft(JSON.stringify(json, null, 2));
+                    setJsonDirty(false);
+                    setJsonError("");
+                  }}
+                  disabled={savingJson || !jsonDirty}
+                >
+                  Discard
+                </button>
+              </div>
+              <div className="form-text small mt-2 mb-0">
+                Edits are validated against this resume&apos;s active schema before saving. Saving
+                updates the working copy — use <strong>Stage &amp; Commit</strong> above to record it in history.
+              </div>
             </div>
           </div>
         </div>
