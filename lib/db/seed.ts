@@ -1,14 +1,205 @@
+import { randomUUID } from "crypto";
 import { sqlite } from "./client";
 import {
   DEFAULT_TEMPLATE_HTML,
   DEFAULT_TEMPLATE_CSS,
 } from "../render/defaultTemplate";
 import {
+  COMPACT_PHOTO_CV_HTML,
+  COMPACT_PHOTO_CV_CSS,
+} from "../render/compactPhotoTemplate";
+import {
   STANDARD_RESUME_JSON_SCHEMA,
   TECH_CERTIFICATIONS_JSON_SCHEMA,
+  COMPACT_PHOTO_CV_JSON_SCHEMA,
 } from "../templates/schemas";
 
-export { STANDARD_RESUME_JSON_SCHEMA, TECH_CERTIFICATIONS_JSON_SCHEMA };
+export {
+  STANDARD_RESUME_JSON_SCHEMA,
+  TECH_CERTIFICATIONS_JSON_SCHEMA,
+  COMPACT_PHOTO_CV_JSON_SCHEMA,
+};
+
+const COMPACT_PHOTO_CV_TEMPLATE_ID = "tpl-compact-photo-cv";
+
+/** Ali Rami's real CV content, mapped to COMPACT_PHOTO_CV_JSON_SCHEMA. */
+const ALI_RAMI_RESUME_JSON = {
+  labels: {
+    skills: "Compétences techniques",
+    workExperience: "Expériences professionnelles",
+    projects: "Projets personnels",
+    education: "Formation",
+    certifications: "Certifications",
+  },
+  basics: {
+    fullName: "Ali Rami",
+    role: "Développeur Full-Stack",
+    photoUrl: "https://i.pravatar.cc/300?img=13",
+    location: "Tanger / Casablanca, Maroc",
+    phone: "0772777815",
+    email: "ali.rami.6699@gmail.com",
+    githubUrl: "https://github.com/ali-r2005",
+    linkedinUrl: "https://www.linkedin.com/in/ali-rami-63a998338/",
+    summary:
+      "Développeur Full-Stack avec une expérience concrète en développement d'applications web, APIs et workflows automatisés en production. À l'aise avec React, Astro, Cloudflare Workers et architectures backend modernes. Habitué à travailler en autonomie sur des projets end-to-end, avec un fort focus performance, SEO et fiabilité.",
+  },
+  skills: [
+    {
+      groups: [
+        { label: "Langages", text: "JavaScript • TypeScript • Python • Go • PHP • SQL • Java" },
+        { label: "Frontend", text: "React • Next.js • SvelteKit • Tailwind CSS • Chart.js • shadcn • Astro" },
+        { label: "Mobile", text: "React Native (Expo)" },
+      ],
+    },
+    {
+      groups: [
+        { label: "Backend", text: "NestJS • Express • Laravel • Flask • Gin (Go) • Prisma • Hono • Cloudflare Workers" },
+        { label: "DB", text: "PostgreSQL • MySQL • MongoDB • Cloudflare D1" },
+        { label: "Déploiement", text: "Cloudflare Pages & Workers • Vercel" },
+      ],
+    },
+    {
+      groups: [
+        { label: "Outils", text: "Docker • Git • RabbitMQ • SSE • Agile • Figma" },
+        { label: "IA", text: "LangChain • OpenAI • YOLO • OpenCV" },
+      ],
+    },
+  ],
+  workExperience: [
+    {
+      position: "Développeur Full-Stack & Mobile",
+      company: "Hostino — Tanger",
+      dateRange: "11/2025 – 01/2026",
+      highlights: [
+        "Développement et déploiement d'applications web et APIs en production avec React, Astro et Cloudflare Pages/Workers",
+        "Conception et implémentation d'APIs REST sécurisées avec des mécanismes avancés comme rate limiting et API keys, ainsi que des règles WAF Cloudflare pour la réduction des attaques DDoS et des bots automatisés, renforçant la résilience de l'infrastructure en production",
+        "Mise en place de workflows automatisés basés sur webhooks (WHMCS → Zoho Books)",
+        "Développement d'un dashboard React pour le suivi des invoices (statuts, actions) avec intégration email via Brevo",
+        "Conception et développement d'une application mobile de type client email avec React Native (Expo), connectée aux APIs backend.",
+        "Optimisation des performances et du SEO via SSG / SSR avec Astro et déploiement sur Cloudflare Pages/Workers",
+        "Optimisation des performances d'une application web grâce au lazy loading des images et à la réduction des bundles JavaScript, augmentant le score Lighthouse de 70 à 95 et réduisant significativement le temps de chargement initial",
+        "Conception d'un boilerplate Astro avec configuration SEO optimisée (meta tags, sitemap, structured data), réduisant de 70 % le temps de mise en place de nouveaux projets web.",
+        "Travail en autonomie complète sur des fonctionnalités end-to-end, du design au déploiement",
+      ],
+    },
+    {
+      position: "Développeur Full-Stack",
+      company: "Centric Marketing — Tanger",
+      dateRange: "07/2025 – 10/2025",
+      highlights: [
+        "Participation au développement d'une plateforme d'Email Marketing en architecture microservices (Next.js, NestJS, Go, RabbitMQ)",
+        "Développement d'interfaces de gestion de campagnes, avec mise à jour en temps réel via Server-Sent Events (SSE)",
+        "Développement d'APIs REST scalables avec NestJS, Prisma et PostgreSQL avec logique multi-tenant",
+        "Implémentation de communication asynchrone entre microservices via RabbitMQ, incluant des services backend en Go (Gin)",
+        "Optimisation des performances : implémentation du lazy loading, gestion d'état via Zustand et sécurisation des flux asynchrones entre microservices.",
+      ],
+    },
+    {
+      position: "Stagiaire Générateur Graphiques IA",
+      company: "Datatika — Tanger",
+      dateRange: "05/2025",
+      highlights: [
+        "Générateur de graphiques IA (Next.js + TypeScript)",
+        "Intégration OpenAI & LangChain (suggestions KPIs, génération automatique de requêtes SQL)",
+        "APIs pour créer/sauvegarder/afficher des graphiques avec Chart.js",
+      ],
+    },
+    {
+      position: "Stagiaire Frontend",
+      company: "System Base — Tanger",
+      dateRange: "08/2024 – 09/2024",
+      highlights: [
+        "Amélioration du portail d'emploi (SvelteKit + Tailwind CSS)",
+        "Implémentation des fonctionnalités CRUD profils et questionnaires avec intégration APIs et création de composants réutilisables",
+      ],
+    },
+  ],
+  projects: [
+    {
+      title: "Waitless",
+      stack: "Express.js • Laravel • Next.js • SSE",
+      description:
+        "Microservices de gestion de files d'attente avec estimation du temps d'attente et mises à jour SSE.",
+    },
+    {
+      title: "Plateforme Réservation",
+      stack: "Flask • MySQL • Jinja2",
+      description:
+        "Application web de réservation avec workflow complet (création, consultation, réservation).",
+    },
+    {
+      title: "Dofus Bot",
+      stack: "Python • OpenCV • OCR • PyWin32",
+      description: "Automatisation d'actions via vision et OCR.",
+    },
+  ],
+  education: [
+    {
+      degree: "Licence Génie Informatique",
+      institution: "École High Tech",
+      dateRange: "2025 – Présent",
+    },
+    {
+      degree: "Technicien Spécialisé Développement Digital",
+      institution: "ISTA NTIC Tanger",
+      dateRange: "2023–2025",
+    },
+    {
+      degree: "Bac Sciences Physiques (Option Française)",
+      institution: "",
+      dateRange: "2023",
+    },
+  ],
+  certifications: [
+    { name: "Prompting Essentials", issuer: "Google", date: "Juin 2025" },
+    { name: "JavaScript", issuer: "Meta", date: "Juillet 2024" },
+    { name: "React Basics", issuer: "Meta", date: "Déc. 2024" },
+    { name: "Laravel & PHP", issuer: "Board Infinity", date: "Fév. 2025" },
+  ],
+};
+
+/**
+ * Seeds the "Compact Photo CV" template (matching Ali Rami's real French CV
+ * design) plus a resume pre-filled with its content, so there's real data to
+ * keep iterating on. Runs independently of seedDefaultTemplates() and is a
+ * no-op once the template row already exists — never overwrites existing
+ * templates/resumes.
+ */
+export function seedCompactPhotoCv() {
+  const existing = sqlite
+    .prepare("SELECT id FROM templates WHERE id = ?")
+    .get(COMPACT_PHOTO_CV_TEMPLATE_ID);
+  if (existing) return;
+
+  sqlite
+    .prepare(
+      `INSERT INTO templates (id, name, description, html_content, css_content, schema_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
+    )
+    .run(
+      COMPACT_PHOTO_CV_TEMPLATE_ID,
+      "Compact Photo CV",
+      "Compact A4 CV with photo header, three-column skills, and a certifications grid.",
+      COMPACT_PHOTO_CV_HTML,
+      COMPACT_PHOTO_CV_CSS,
+      JSON.stringify(COMPACT_PHOTO_CV_JSON_SCHEMA, null, 2)
+    );
+
+  const resumeId = randomUUID();
+  sqlite
+    .prepare(
+      `INSERT INTO resumes (id, title, template_id, current_json, resume_group_id, language, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    .run(
+      resumeId,
+      "Ali Rami — CV",
+      COMPACT_PHOTO_CV_TEMPLATE_ID,
+      JSON.stringify(ALI_RAMI_RESUME_JSON),
+      resumeId,
+      "fr"
+    );
+}
 
 const TECH_TEMPLATE_HTML = `
 <div class="tech-resume">

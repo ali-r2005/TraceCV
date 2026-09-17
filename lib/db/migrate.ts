@@ -3,7 +3,7 @@
  * Safe to call multiple times.
  */
 import { sqlite } from "./client";
-import { seedDefaultTemplates } from "./seed";
+import { seedDefaultTemplates, seedCompactPhotoCv } from "./seed";
 
 export function ensureSchema() {
   sqlite.exec(`
@@ -78,6 +78,7 @@ export function ensureSchema() {
 
   // Seed default templates if empty
   seedDefaultTemplates();
+  seedCompactPhotoCv();
 }
 
 ensureSchema();
