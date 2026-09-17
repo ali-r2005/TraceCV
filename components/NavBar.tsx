@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function NavBar() {
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
-      <div className="container">
+      <div className="container-fluid">
         <Link className="navbar-brand fw-bold d-flex align-items-center gap-2" href="/">
           <span>TraceCV</span>
         </Link>
