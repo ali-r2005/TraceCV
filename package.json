@@ -12,6 +12,7 @@
     "@langchain/core": "^1.2.11",
     "@langchain/google-genai": "^2.3.2",
     "@langchain/openai": "^1.5.13",
+    "ajv": "^8.20.0",
     "better-sqlite3": "^13.0.3",
     "bootstrap": "^5.3.8",
     "drizzle-orm": "^0.45.2",

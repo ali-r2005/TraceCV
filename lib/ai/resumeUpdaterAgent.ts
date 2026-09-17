@@ -1,6 +1,18 @@
 import { applyPatch, type Operation } from "fast-json-patch";
+import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
 import { getChatModel } from "./chatModel";
 import { ResumeSchema, JsonPatchSchema, type JsonPatchOperation } from "./schemas";
+
+const ajv = new Ajv({ allErrors: true, strict: false });
+
+function formatAjvErrors(errors: ErrorObject[] | null | undefined): string {
+  if (!errors || errors.length === 0) return "Unknown validation error.";
+  return errors
+    .map((e) => `- ${e.instancePath || "/"} ${e.message}`)
+    .join("\n");
+}
+
+const MAX_ATTEMPTS = 2;
 
 /**
  * Agent 2: Dynamic JSON Source-of-Truth Updater Agent
@@ -10,6 +22,11 @@ import { ResumeSchema, JsonPatchSchema, type JsonPatchOperation } from "./schema
  * model re-emit the entire resume on every edit, it asks for a minimal
  * RFC 6902 JSON Patch (op/path/value) describing only what changed, applies
  * that patch locally, and returns the resulting full JSON object.
+ *
+ * When a custom template schema is supplied, the resulting JSON is validated
+ * against it with Ajv (real JSON Schema enforcement, not just prompt text).
+ * On a validation failure the model gets one retry with the exact errors so
+ * it can correct its own patch before we give up.
  */
 export async function updateResumeJson(
   currentJson: Record<string, unknown>,
@@ -18,13 +35,24 @@ export async function updateResumeJson(
   modelId?: string
 ): Promise<Record<string, unknown>> {
   const llm = getChatModel({ modelId, temperature: 0 });
+  const hasCustomSchema = !!customSchema && typeof customSchema === "object" && Object.keys(customSchema).length > 0;
 
-  const targetSchemaDescription =
-    customSchema && typeof customSchema === "object" && Object.keys(customSchema).length > 0
-      ? `TARGET JSON SCHEMA (the resume must conform to this):\n${JSON.stringify(customSchema, null, 2)}`
-      : "TARGET JSON SCHEMA: the standard resume schema (basics, workExperience, education, skills, projects).";
+  let validateCustom: ValidateFunction | null = null;
+  if (hasCustomSchema) {
+    try {
+      validateCustom = ajv.compile(customSchema as Record<string, unknown>);
+    } catch (err) {
+      throw new Error(
+        `This template's custom schema is not a valid JSON Schema and cannot be enforced: ${err}`
+      );
+    }
+  }
 
-  const systemPrompt = `
+  const targetSchemaDescription = hasCustomSchema
+    ? `TARGET JSON SCHEMA (the resume must conform to this):\n${JSON.stringify(customSchema, null, 2)}`
+    : "TARGET JSON SCHEMA: the standard resume schema (basics, workExperience, education, skills, projects).";
+
+  const baseSystemPrompt = `
 You are an expert AI Resume Editor.
 You do NOT rewrite the whole resume. You return a minimal RFC 6902 JSON Patch
 (a list of { op, path, value } operations) describing ONLY the fields that
@@ -44,39 +72,66 @@ RULES:
 
   const structuredLlm = llm.withStructuredOutput(JsonPatchSchema);
 
-  const response = await structuredLlm.invoke([
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `CURRENT RESUME JSON:\n${JSON.stringify(
-        currentJson,
-        null,
-        2
-      )}\n\nUSER UPDATE REQUEST:\n${userUpdateInput}`,
-    },
-  ]);
+  let lastError = "";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const systemPrompt =
+      attempt === 1
+        ? baseSystemPrompt
+        : `${baseSystemPrompt}\nYOUR PREVIOUS PATCH FAILED SCHEMA VALIDATION WITH THESE ERRORS:\n${lastError}\nFix your patch so the resulting JSON satisfies the TARGET JSON SCHEMA exactly.`;
 
-  const patchOps = response.patch as Operation[];
-  console.log("AI-generated JSON Patch operations:", patchOps);
-  if (!patchOps || patchOps.length === 0) {
-    throw new Error("The AI did not return any changes to apply.");
-  }
+    const response = await structuredLlm.invoke([
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `CURRENT RESUME JSON:\n${JSON.stringify(
+          currentJson,
+          null,
+          2
+        )}\n\nUSER UPDATE REQUEST:\n${userUpdateInput}`,
+      },
+    ]);
 
-  const result = applyPatch(currentJson, patchOps, true, false);
-  const updatedJson = result.newDocument as Record<string, unknown>;
-
-  // Validate against the standard schema when no custom template schema overrides it.
-  if (!customSchema || Object.keys(customSchema).length === 0) {
-    const validated = ResumeSchema.safeParse(updatedJson);
-    if (!validated.success) {
-      throw new Error(
-        `AI patch produced an invalid resume: ${validated.error.message}`
-      );
+    const patchOps = response.patch as Operation[];
+    if (!patchOps || patchOps.length === 0) {
+      throw new Error("The AI did not return any changes to apply.");
     }
-    return validated.data;
+
+    let updatedJson: Record<string, unknown>;
+    try {
+      const result = applyPatch(currentJson, patchOps, true, false);
+      updatedJson = result.newDocument as Record<string, unknown>;
+    } catch (err) {
+      lastError = `The patch could not be applied to the current resume JSON: ${err}`;
+      if (attempt === MAX_ATTEMPTS) {
+        throw new Error(lastError);
+      }
+      continue;
+    }
+
+    if (!hasCustomSchema) {
+      const validated = ResumeSchema.safeParse(updatedJson);
+      if (!validated.success) {
+        lastError = validated.error.message;
+        if (attempt === MAX_ATTEMPTS) {
+          throw new Error(`AI patch produced an invalid resume: ${lastError}`);
+        }
+        continue;
+      }
+      return validated.data;
+    }
+
+    if (validateCustom && !validateCustom(updatedJson)) {
+      lastError = formatAjvErrors(validateCustom.errors);
+      if (attempt === MAX_ATTEMPTS) {
+        throw new Error(`AI patch produced a resume that does not match this template's custom schema:\n${lastError}`);
+      }
+      continue;
+    }
+
+    return updatedJson;
   }
 
-  return updatedJson;
+  throw new Error("Failed to produce a valid resume update.");
 }
 
 export type { JsonPatchOperation };
