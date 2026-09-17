@@ -56,7 +56,7 @@ export const COMPACT_PHOTO_CV_HTML = `
       </ul>
       {{/if}}
     </div>
-    <div class="exp-date">{{dateRange}}</div>
+    <div class="exp-date">{{lookup this "dateRange"}}</div>
   </div>
   {{/each}}
   <div class="sep"></div>
@@ -77,7 +77,7 @@ export const COMPACT_PHOTO_CV_HTML = `
       <h2>{{labels.education}}</h2>
       <ul class="small">
         {{#each education}}
-        <li><strong>{{degree}}</strong> {{institution}}{{#if dateRange}} <span class="muted">{{dateRange}}</span>{{/if}}</li>
+        <li><strong>{{degree}}</strong> {{institution}}{{#if dateRange}} <span class="muted">{{lookup this "dateRange"}}</span>{{/if}}</li>
         {{/each}}
       </ul>
       {{/if}}
