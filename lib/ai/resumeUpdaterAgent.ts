@@ -34,7 +34,7 @@ export async function updateResumeJson(
   customSchema?: Record<string, unknown> | null,
   modelId?: string
 ): Promise<Record<string, unknown>> {
-  const llm = getChatModel({ modelId, temperature: 0 });
+  const llm = await getChatModel({ modelId, temperature: 0 });
   const hasCustomSchema = !!customSchema && typeof customSchema === "object" && Object.keys(customSchema).length > 0;
 
   let validateCustom: ValidateFunction | null = null;

@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -8,6 +8,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; versionId: string }> }
 ) {
+  await ensureSeeded();
   const { id, versionId } = await params;
   const [version] = await db
     .select()
@@ -29,6 +30,7 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; versionId: string }> }
 ) {
+  await ensureSeeded();
   const { id, versionId } = await params;
 
   const [version] = await db
@@ -40,7 +42,7 @@ export async function POST(
     return NextResponse.json({ error: "Version not found" }, { status: 404 });
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
 
   await db
     .delete(resumeVersions)

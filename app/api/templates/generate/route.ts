@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "@/lib/db/client";
@@ -11,6 +11,7 @@ import { generateResumeTemplate } from "@/lib/ai/templateAgent";
  * HTML/CSS in SQLite. (Architecture document section 6, step 4.)
  */
 export async function POST(req: NextRequest) {
+  await ensureSeeded();
   const body = await req.json();
   const { userDesignPrompt } = body as { userDesignPrompt?: string };
 
@@ -33,7 +34,6 @@ export async function POST(req: NextRequest) {
   }
 
   const id = uuidv4();
-  const now = new Date().toISOString();
 
   await db.insert(templates).values({
     id,
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     description: userDesignPrompt,
     htmlContent: generated.htmlContent,
     cssContent: generated.cssContent,
-    createdAt: now,
+    schemaJson: "{}",
   });
 
   return NextResponse.json(

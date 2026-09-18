@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * 1. Resumes — Core entity representing a user's master resume profile.
  * `currentJson` holds the master JSON Source of Truth (see lib/ai/schemas.ts).
  */
-export const resumes = sqliteTable("resumes", {
+export const resumes = pgTable("resumes", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   templateId: text("template_id"),
@@ -14,14 +14,14 @@ export const resumes = sqliteTable("resumes", {
   language: text("language").notNull().default("en"),
   syncSourceId: text("sync_source_id"),
   syncBaseJson: text("sync_base_json"),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`),
 });
 
 /**
  * 2. Resume Versions — Tracks history & AI modifications over time.
  */
-export const resumeVersions = sqliteTable("resume_versions", {
+export const resumeVersions = pgTable("resume_versions", {
   id: text("id").primaryKey(),
   resumeId: text("resume_id")
     .notNull()
@@ -29,29 +29,29 @@ export const resumeVersions = sqliteTable("resume_versions", {
   versionNumber: integer("version_number").notNull(),
   changeSummary: text("change_summary").notNull(),
   snapshotJson: text("snapshot_json").notNull(),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
 });
 
 /**
  * 3. Templates — Stores custom HTML/CSS templates and their JSON schemas for rendering.
  */
-export const templates = sqliteTable("templates", {
+export const templates = pgTable("templates", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   htmlContent: text("html_content").notNull(),
   cssContent: text("css_content").notNull(),
   schemaJson: text("schema_json").notNull(),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
 });
 
 /**
  * 4. App Settings — Stores application configuration and API secrets strictly in DB.
  */
-export const appSettings = sqliteTable("app_settings", {
+export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
-  updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`),
 });
 
 export type Resume = typeof resumes.$inferSelect;

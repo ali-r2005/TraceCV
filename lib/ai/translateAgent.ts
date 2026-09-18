@@ -15,7 +15,7 @@ export async function translateResumeJson(
   targetLanguage: string,
   modelId?: string
 ): Promise<ResumeJson> {
-  const llm = getChatModel({ modelId, temperature: 0 });
+  const llm = await getChatModel({ modelId, temperature: 0 });
   const structuredLlm = llm.withStructuredOutput(ResumeSchema);
 
   const systemPrompt = `
@@ -55,7 +55,7 @@ export async function translateJsonPatch(
   targetLanguage: string,
   modelId?: string
 ): Promise<Operation[]> {
-  const llm = getChatModel({ modelId, temperature: 0 });
+  const llm = await getChatModel({ modelId, temperature: 0 });
   const structuredLlm = llm.withStructuredOutput(JsonPatchSchema);
 
   const systemPrompt = `

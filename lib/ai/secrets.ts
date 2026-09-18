@@ -1,4 +1,6 @@
-import { sqlite } from "../db/client";
+import { eq, inArray } from "drizzle-orm";
+import { db } from "../db/client";
+import { appSettings } from "../db/schema";
 import type { AIProvider } from "./models";
 
 const PROVIDER_KEY_MAP: Record<AIProvider, string> = {
@@ -7,14 +9,15 @@ const PROVIDER_KEY_MAP: Record<AIProvider, string> = {
 };
 
 /**
- * Retrieves the API key for a provider strictly from the SQLite database.
+ * Retrieves the API key for a provider strictly from the database.
  * No .env fallback is used.
  */
-export function getApiKeyFromDb(provider: AIProvider): string | null {
+export async function getApiKeyFromDb(provider: AIProvider): Promise<string | null> {
   const settingKey = PROVIDER_KEY_MAP[provider];
-  const row = sqlite
-    .prepare("SELECT value FROM app_settings WHERE key = ?")
-    .get(settingKey) as { value: string } | undefined;
+  const [row] = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, settingKey));
 
   if (row && row.value && row.value.trim().length > 0) {
     return row.value.trim();
@@ -25,26 +28,26 @@ export function getApiKeyFromDb(provider: AIProvider): string | null {
 /**
  * Saves or updates an API key in the database.
  */
-export function saveApiKeyToDb(provider: AIProvider, apiKey: string): void {
+export async function saveApiKeyToDb(provider: AIProvider, apiKey: string): Promise<void> {
   const settingKey = PROVIDER_KEY_MAP[provider];
   const trimmed = apiKey.trim();
-  const now = new Date().toISOString();
+  const now = new Date();
 
-  sqlite
-    .prepare(
-      `INSERT INTO app_settings (key, value, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-    )
-    .run(settingKey, trimmed, now);
+  await db
+    .insert(appSettings)
+    .values({ key: settingKey, value: trimmed, updatedAt: now })
+    .onConflictDoUpdate({
+      target: appSettings.key,
+      set: { value: trimmed, updatedAt: now },
+    });
 }
 
 /**
  * Deletes an API key from the database.
  */
-export function deleteApiKeyFromDb(provider: AIProvider): void {
+export async function deleteApiKeyFromDb(provider: AIProvider): Promise<void> {
   const settingKey = PROVIDER_KEY_MAP[provider];
-  sqlite.prepare("DELETE FROM app_settings WHERE key = ?").run(settingKey);
+  await db.delete(appSettings).where(eq(appSettings.key, settingKey));
 }
 
 /**
@@ -60,17 +63,13 @@ function maskSecret(secret: string): string {
 /**
  * Returns the configuration status and masked previews for both providers.
  */
-export function getApiKeysStatus(): Record<
-  AIProvider,
-  { configured: boolean; masked: string; updatedAt: string | null }
+export async function getApiKeysStatus(): Promise<
+  Record<AIProvider, { configured: boolean; masked: string; updatedAt: string | null }>
 > {
-  const rows = sqlite
-    .prepare("SELECT key, value, updated_at FROM app_settings WHERE key IN (?, ?)")
-    .all("google_api_key", "openai_api_key") as Array<{
-    key: string;
-    value: string;
-    updated_at: string;
-  }>;
+  const rows = await db
+    .select()
+    .from(appSettings)
+    .where(inArray(appSettings.key, ["google_api_key", "openai_api_key"]));
 
   const geminiRow = rows.find((r) => r.key === "google_api_key");
   const openaiRow = rows.find((r) => r.key === "openai_api_key");
@@ -79,12 +78,12 @@ export function getApiKeysStatus(): Record<
     gemini: {
       configured: !!(geminiRow && geminiRow.value.trim().length > 0),
       masked: geminiRow && geminiRow.value ? maskSecret(geminiRow.value) : "",
-      updatedAt: geminiRow ? geminiRow.updated_at : null,
+      updatedAt: geminiRow?.updatedAt ? geminiRow.updatedAt.toISOString() : null,
     },
     openai: {
       configured: !!(openaiRow && openaiRow.value.trim().length > 0),
       masked: openaiRow && openaiRow.value ? maskSecret(openaiRow.value) : "",
-      updatedAt: openaiRow ? openaiRow.updated_at : null,
+      updatedAt: openaiRow?.updatedAt ? openaiRow.updatedAt.toISOString() : null,
     },
   };
 }

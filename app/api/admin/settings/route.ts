@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getApiKeysStatus,
@@ -9,11 +9,13 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatOpenAI } from "@langchain/openai";
 
 export async function GET() {
-  const status = getApiKeysStatus();
+  await ensureSeeded();
+  const status = await getApiKeysStatus();
   return NextResponse.json(status);
 }
 
 export async function POST(req: NextRequest) {
+  await ensureSeeded();
   try {
     const body = await req.json();
     const { action, provider, apiKey, testOnly } = body as {
@@ -66,11 +68,11 @@ export async function POST(req: NextRequest) {
 
     // Action: Delete API key
     if (action === "delete") {
-      deleteApiKeyFromDb(provider);
+      await deleteApiKeyFromDb(provider);
       return NextResponse.json({
         success: true,
         message: `${provider === "gemini" ? "Google Gemini" : "OpenAI"} key removed.`,
-        status: getApiKeysStatus(),
+        status: await getApiKeysStatus(),
       });
     }
 
@@ -82,12 +84,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    saveApiKeyToDb(provider, apiKey.trim());
+    await saveApiKeyToDb(provider, apiKey.trim());
 
     return NextResponse.json({
       success: true,
       message: `${provider === "gemini" ? "Google Gemini" : "OpenAI"} API key saved successfully.`,
-      status: getApiKeysStatus(),
+      status: await getApiKeysStatus(),
     });
   } catch (err) {
     return NextResponse.json(

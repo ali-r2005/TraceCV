@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
@@ -13,6 +13,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   const body = await req.json();
   const { changeSummary } = body as { changeSummary?: string };
@@ -37,7 +38,7 @@ export async function POST(
     .limit(1);
 
   const nextVersionNumber = (lastVersion?.versionNumber ?? 0) + 1;
-  const now = new Date().toISOString();
+  const now = new Date();
 
   const [committed] = await db
     .insert(resumeVersions)

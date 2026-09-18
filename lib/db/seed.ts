@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
-import { sqlite } from "./client";
+import { sql } from "drizzle-orm";
+import { db } from "./client";
+import { templates, resumes } from "./schema";
 import {
   DEFAULT_TEMPLATE_HTML,
   DEFAULT_TEMPLATE_CSS,
@@ -165,40 +167,32 @@ const ALI_RAMI_RESUME_JSON = {
  * no-op once the template row already exists — never overwrites existing
  * templates/resumes.
  */
-export function seedCompactPhotoCv() {
-  const existing = sqlite
-    .prepare("SELECT id FROM templates WHERE id = ?")
-    .get(COMPACT_PHOTO_CV_TEMPLATE_ID);
+export async function seedCompactPhotoCv() {
+  const [existing] = await db
+    .select({ id: templates.id })
+    .from(templates)
+    .where(sql`${templates.id} = ${COMPACT_PHOTO_CV_TEMPLATE_ID}`);
   if (existing) return;
 
-  sqlite
-    .prepare(
-      `INSERT INTO templates (id, name, description, html_content, css_content, schema_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
-    )
-    .run(
-      COMPACT_PHOTO_CV_TEMPLATE_ID,
-      "Compact Photo CV",
+  await db.insert(templates).values({
+    id: COMPACT_PHOTO_CV_TEMPLATE_ID,
+    name: "Compact Photo CV",
+    description:
       "Compact A4 CV with photo header, three-column skills, and a certifications grid.",
-      COMPACT_PHOTO_CV_HTML,
-      COMPACT_PHOTO_CV_CSS,
-      JSON.stringify(COMPACT_PHOTO_CV_JSON_SCHEMA, null, 2)
-    );
+    htmlContent: COMPACT_PHOTO_CV_HTML,
+    cssContent: COMPACT_PHOTO_CV_CSS,
+    schemaJson: JSON.stringify(COMPACT_PHOTO_CV_JSON_SCHEMA, null, 2),
+  });
 
   const resumeId = randomUUID();
-  sqlite
-    .prepare(
-      `INSERT INTO resumes (id, title, template_id, current_json, resume_group_id, language, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    )
-    .run(
-      resumeId,
-      "Ali Rami — CV",
-      COMPACT_PHOTO_CV_TEMPLATE_ID,
-      JSON.stringify(ALI_RAMI_RESUME_JSON),
-      resumeId,
-      "fr"
-    );
+  await db.insert(resumes).values({
+    id: resumeId,
+    title: "Ali Rami — CV",
+    templateId: COMPACT_PHOTO_CV_TEMPLATE_ID,
+    currentJson: JSON.stringify(ALI_RAMI_RESUME_JSON),
+    resumeGroupId: resumeId,
+    language: "fr",
+  });
 }
 
 const TECH_TEMPLATE_HTML = `
@@ -341,35 +335,29 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1e
 /**
  * Seeds initial templates if none exist in the database.
  */
-export function seedDefaultTemplates() {
-  const rowCount = sqlite
-    .prepare("SELECT count(*) as count FROM templates")
-    .get() as { count: number };
+export async function seedDefaultTemplates() {
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(templates);
 
-  if (rowCount.count === 0) {
-    const insert = sqlite.prepare(`
-      INSERT INTO templates (id, name, description, html_content, css_content, schema_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-    `);
-
-    // 1. Standard Modern Template
-    insert.run(
-      "tpl-modern-standard",
-      "Modern Classic (Standard SSOT)",
-      "Clean, versatile corporate single-column resume matching the master standard schema.",
-      DEFAULT_TEMPLATE_HTML,
-      DEFAULT_TEMPLATE_CSS,
-      JSON.stringify(STANDARD_RESUME_JSON_SCHEMA, null, 2)
-    );
-
-    // 2. Tech & Engineering Template with Certifications
-    insert.run(
-      "tpl-tech-certifications",
-      "Engineering & Cloud Architect (With Certifications)",
-      "Specialized technical layout with custom fields for cloud certifications, GitHub handles, and tech tags.",
-      TECH_TEMPLATE_HTML,
-      TECH_TEMPLATE_CSS,
-      JSON.stringify(TECH_CERTIFICATIONS_JSON_SCHEMA, null, 2)
-    );
+  if (Number(count) === 0) {
+    await db.insert(templates).values([
+      {
+        id: "tpl-modern-standard",
+        name: "Modern Classic (Standard SSOT)",
+        description:
+          "Clean, versatile corporate single-column resume matching the master standard schema.",
+        htmlContent: DEFAULT_TEMPLATE_HTML,
+        cssContent: DEFAULT_TEMPLATE_CSS,
+        schemaJson: JSON.stringify(STANDARD_RESUME_JSON_SCHEMA, null, 2),
+      },
+      {
+        id: "tpl-tech-certifications",
+        name: "Engineering & Cloud Architect (With Certifications)",
+        description:
+          "Specialized technical layout with custom fields for cloud certifications, GitHub handles, and tech tags.",
+        htmlContent: TECH_TEMPLATE_HTML,
+        cssContent: TECH_TEMPLATE_CSS,
+        schemaJson: JSON.stringify(TECH_CERTIFICATIONS_JSON_SCHEMA, null, 2),
+      },
+    ]);
   }
 }

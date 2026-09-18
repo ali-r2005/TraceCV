@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import Ajv, { type ErrorObject } from "ajv";
@@ -17,6 +17,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   const [resume] = await db.select().from(resumes).where(eq(resumes.id, id));
   if (!resume) {
@@ -35,6 +36,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const currentJson = body?.currentJson;
@@ -101,7 +103,7 @@ export async function PATCH(
     }
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
   await db
     .update(resumes)
     .set({ currentJson: JSON.stringify(currentJson), updatedAt: now })
@@ -114,6 +116,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   await db.delete(resumes).where(eq(resumes.id, id));
   return NextResponse.json({ ok: true });

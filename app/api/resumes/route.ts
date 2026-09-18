@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { desc, eq } from "drizzle-orm";
@@ -7,11 +7,13 @@ import { resumes, resumeVersions, templates } from "@/lib/db/schema";
 import { emptyResumeJson } from "@/lib/ai/schemas";
 
 export async function GET() {
+  await ensureSeeded();
   const all = await db.select().from(resumes).orderBy(desc(resumes.updatedAt));
   return NextResponse.json(all);
 }
 
 export async function POST(req: NextRequest) {
+  await ensureSeeded();
   const body = await req.json();
   const { title, fullName, email, templateId } = body as {
     title?: string;
@@ -48,7 +50,6 @@ export async function POST(req: NextRequest) {
   }
 
   const id = uuidv4();
-  const now = new Date().toISOString();
   const resumeTitle = title || `${fullName}'s Resume`;
   const json = emptyResumeJson(fullName, email);
 
@@ -59,8 +60,6 @@ export async function POST(req: NextRequest) {
     currentJson: JSON.stringify(json),
     resumeGroupId: id,
     language: "en",
-    createdAt: now,
-    updatedAt: now,
   });
 
   await db.insert(resumeVersions).values({
@@ -69,7 +68,6 @@ export async function POST(req: NextRequest) {
     versionNumber: 1,
     changeSummary: `Initial resume created with template: ${template.name}`,
     snapshotJson: JSON.stringify(json),
-    createdAt: now,
   });
 
   const [created] = await db.select().from(resumes).where(eq(resumes.id, id));

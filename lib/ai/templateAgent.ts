@@ -14,7 +14,7 @@ import { TemplateSchema, type GeneratedTemplate } from "./schemas";
 export async function generateResumeTemplate(
   userDesignPrompt: string
 ): Promise<GeneratedTemplate> {
-  const model = getChatModel(0.2);
+  const model = await getChatModel(0.2);
   const structuredModel = model.withStructuredOutput(TemplateSchema);
 
   const systemPrompt = `

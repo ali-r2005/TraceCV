@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { eq } from "drizzle-orm";
@@ -14,6 +14,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   const [resume] = await db.select().from(resumes).where(eq(resumes.id, id));
   if (!resume) {
@@ -39,6 +40,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   const body = await req.json();
   const { language, modelId } = body as { language?: string; modelId?: string };
@@ -89,7 +91,7 @@ export async function POST(
   }
 
   const newId = uuidv4();
-  const now = new Date().toISOString();
+  const now = new Date();
 
   await db.insert(resumes).values({
     id: newId,

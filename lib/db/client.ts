@@ -1,28 +1,23 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import path from "node:path";
-import fs from "node:fs";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL is not set. Add your Supabase Postgres connection string to .env.local."
+  );
 }
-
-const DB_PATH = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, "tracecv.sqlite");
 
 declare global {
-  var __tracecv_sqlite__: Database.Database | undefined;
+  var __tracecv_pg__: ReturnType<typeof postgres> | undefined;
 }
 
-// Reuse the same connection across hot reloads in dev.
-const sqlite = global.__tracecv_sqlite__ ?? new Database(DB_PATH);
+// Reuse the same connection pool across hot reloads in dev.
+const client = global.__tracecv_pg__ ?? postgres(DATABASE_URL, { prepare: false });
 if (process.env.NODE_ENV !== "production") {
-  global.__tracecv_sqlite__ = sqlite;
+  global.__tracecv_pg__ = client;
 }
 
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-
-export const db = drizzle(sqlite, { schema });
-export { sqlite };
+export const db = drizzle(client, { schema });
+export { client };

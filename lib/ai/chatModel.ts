@@ -11,9 +11,9 @@ export type ChatModelOptions = {
 
 /**
  * Returns the configured chat model for LangChain agents.
- * API keys are fetched strictly from the SQLite database.
+ * API keys are fetched strictly from the database.
  */
-export function getChatModel(options: ChatModelOptions | number = 0) {
+export async function getChatModel(options: ChatModelOptions | number = 0) {
   const temperature =
     typeof options === "number" ? options : options.temperature ?? 0;
   const requestedModelId =
@@ -26,7 +26,7 @@ export function getChatModel(options: ChatModelOptions | number = 0) {
     requestedProvider || (modelInfo ? modelInfo.provider : "gemini");
   const modelName = modelInfo ? modelInfo.id : (provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o");
 
-  const apiKey = getApiKeyFromDb(provider);
+  const apiKey = await getApiKeyFromDb(provider);
 
   if (!apiKey) {
     const providerName = provider === "gemini" ? "Google Gemini" : "OpenAI";

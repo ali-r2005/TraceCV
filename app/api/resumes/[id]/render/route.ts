@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -18,6 +18,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   const urlTemplateId = req.nextUrl.searchParams.get("templateId");
   const versionId = req.nextUrl.searchParams.get("versionId");

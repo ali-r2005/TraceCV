@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
@@ -7,11 +7,13 @@ import { templates } from "@/lib/db/schema";
 import { STANDARD_RESUME_JSON_SCHEMA } from "@/lib/db/seed";
 
 export async function GET() {
+  await ensureSeeded();
   const all = await db.select().from(templates).orderBy(desc(templates.createdAt));
   return NextResponse.json(all);
 }
 
 export async function POST(req: NextRequest) {
+  await ensureSeeded();
   try {
     const body = await req.json();
     const { name, description, htmlContent, cssContent, schemaJson } = body as {
@@ -48,7 +50,6 @@ export async function POST(req: NextRequest) {
     }
 
     const id = uuidv4();
-    const now = new Date().toISOString();
 
     await db.insert(templates).values({
       id,
@@ -57,7 +58,6 @@ export async function POST(req: NextRequest) {
       htmlContent,
       cssContent,
       schemaJson: finalSchemaJson,
-      createdAt: now,
     });
 
     return NextResponse.json(

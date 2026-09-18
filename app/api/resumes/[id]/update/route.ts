@@ -1,4 +1,4 @@
-import "@/lib/db/migrate";
+import { ensureSeeded } from "@/lib/db/migrate";
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -15,6 +15,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSeeded();
   const { id } = await params;
   const body = await req.json();
   const { userUpdateInput, templateId, modelId } = body as {
@@ -78,7 +79,7 @@ export async function POST(
     );
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
 
   await db
     .update(resumes)
